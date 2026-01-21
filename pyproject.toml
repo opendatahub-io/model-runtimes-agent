@@ -1,0 +1,28 @@
+[project]
+name = "runtimes-deployment-agent"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "Apache-2.0"}
+dependencies = [
+    "langchain>=1.0.3",
+    "langchain-core>=0.3.78",
+    "langchain-google-genai>=3.2.0",
+    "streamlit>=1.28.0",
+    "pillow>=10.0.0",
+    "pandas>=2.0.0",
+    "plotly>=5.17.0",
+    "pyyaml>=6.0",
+]
+
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project.scripts]
+agent = "runtimes_dep_agent.execute_agent:main"
+
