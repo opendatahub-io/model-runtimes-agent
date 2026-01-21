@@ -156,18 +156,10 @@ Thumbs.db
 Desktop.ini
 
 # Project-specific generated files
-# Info folder contains generated outputs from agent runs
-info/
-# Ignore generated text files in info folder
-info/*.txt
-info/*.json
 
 # Generated config files (keep base templates)
 config-yaml/*.generated.yaml
 
-# Demo/example log files
-demo-logs/
-*.log
 
 # Streamlit
 .streamlit/
