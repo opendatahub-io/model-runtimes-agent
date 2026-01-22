@@ -1,12 +1,10 @@
 model-car:
-  - name: ministral-3-14b-instruct-2512
-    image: registry.stage.redhat.io/rhai/modelcar-ministral-3-14b-instruct-2512:3.0
-  # - name: nvidia-nemotron-3-nano-30b-a3b-fp8
-  #   image: registry.stage.redhat.io/rhai/modelcar-nvidia-nemotron-3-nano-30b-a3b-fp8:3.0
-  #   model_output_type: text
-  # - name: apertus-8b-instruct-2509-fp8-dynamic
-  #   image: registry.stage.redhat.io/rhai/modelcar-apertus-8b-instruct-2509-fp8-dynamic:3.0
-  #   model_output_type: text
+  - name: nvidia-nemotron-3-nano-30b-a3b-fp8
+    image: registry.stage.redhat.io/rhai/modelcar-nvidia-nemotron-3-nano-30b-a3b-fp8:3.0
+    model_output_type: text
+  - name: apertus-8b-instruct-2509-fp8-dynamic
+    image: registry.stage.redhat.io/rhai/modelcar-apertus-8b-instruct-2509-fp8-dynamic:3.0
+    model_output_type: text
   # - name: whisper-large-v2-W4A16-G128
   #   image: oci://registry.redhat.io/rhelai1/modelcar-whisper-large-v2-w4a16-g128:1.5
   #   model_output_type: audio
