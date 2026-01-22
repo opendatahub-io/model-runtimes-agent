@@ -1,0 +1,9 @@
+• Cloud Provider: AWS
+• Instance Type: p4d.24xlarge
+• GPU Provider: NVIDIA
+• GPU Product: NVIDIA-A100-SXM4-40GB
+• Per-GPU Memory: 40.0 GB GB
+• Allocatable GPUs: 8
+• Node RAM: 1203.6 GB
+• Node Storage: 114.3 GB
+• Node Name: ip-10-0-34-102.ec2.internal

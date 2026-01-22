@@ -5,7 +5,7 @@
 [![uv](https://img.shields.io/badge/uv-package%20manager-blueviolet)](https://github.com/astral-sh/uv)
 [![LangChain](https://img.shields.io/badge/Built%20with-LangChain%201.x-orange)](https://python.langchain.com)
 
-![Supervisor Diagram](supervisor-diagram.png)
+![Supervisor Diagram](assets/supervisor-diagram.png)
 
 Supervisor-driven orchestration for analysing model-car configurations and validating them end-to-end. The tool follows LangChain’s [supervisor pattern](https://docs.langchain.com/oss/python/langchain/supervisor), combining a primary LLM with configuration + accelerator + decision specialists and a QA runner that understands Red Hat “model-car” manifests and the container images they reference.
 
