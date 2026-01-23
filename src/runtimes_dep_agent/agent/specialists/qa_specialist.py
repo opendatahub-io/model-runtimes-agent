@@ -136,6 +136,11 @@ def build_qa_specialist(
             return msg
 
         registry_from_modelcar = _infer_registry_from_modelcar(modelcar_cfg or {})
+        if not registry_from_modelcar:
+            msg = "QA_ERROR:MODELCAR_REGISTRY_UNDETERMINED Could not determine a single registry host from model-car config."
+            logger.error(msg)
+            print(f"[QA] {msg}", flush=True)
+            return msg
         try:
             shutil.copy2(host_kubeconfig_path, staged_kubeconfig)
             staged_kubeconfig.chmod(0o644)
