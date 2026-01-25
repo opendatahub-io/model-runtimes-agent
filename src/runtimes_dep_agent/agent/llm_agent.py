@@ -10,6 +10,10 @@ from pathlib import Path
 
 from langchain.agents import create_agent
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
+from langchain_anthropic import ChatAnthropic
+from langchain_core.language_models.chat_models import BaseChatModel
+import httpx
 
 from .specialists import SpecialistSpec
 from .specialists.config_specialist import build_config_specialist
@@ -24,7 +28,35 @@ from ..utils.path_utils import detect_repo_root
 logger = logging.getLogger(__name__)
 
 
-
+def build_llm(
+        service: str,
+        model: str,
+        api_key: str,
+        base_url: str | None = None
+) -> BaseChatModel:
+    if service == "Gemini":
+        return ChatGoogleGenerativeAI(
+            model=model,
+            api_key=api_key,
+            temperature=0,
+        )
+    elif service in ("OpenAI", "Self-hosted"):
+        return ChatOpenAI(
+            model_name=model,
+            api_key=api_key,
+            base_url=base_url,
+            temperature=0,
+            http_client=httpx.Client(verify=False) if base_url else None,
+        )
+    elif service == "Anthropic":
+        return ChatAnthropic(
+            model=model,
+            api_key=api_key,
+            base_url=base_url,
+            temperature=0,
+        )
+    else:
+        raise ValueError(f"Unsupported service: {service}")
 
 
 
@@ -32,16 +64,14 @@ class LLMAgent:
     """Builds a collection of specialists and exposes a supervisor entry point."""
 
     def __init__(self, 
-                 api_key: str, 
+                 api_key: str,
+                 service: str,
                  model: str = "gemini-2.5-pro",
+                 base_url: str | None = None,
                  bootstrap_config: str | None = None,
                  ) -> None:
-    
-        self.llm = ChatGoogleGenerativeAI(
-            model=model,
-            api_key=api_key,
-            temperature=0,
-        )
+
+        self.llm = build_llm(service=service, model=model, api_key=api_key, base_url=base_url)
 
         self.precomputed_requirements = None
         self.bootstrap_config_path: Path | None = None
