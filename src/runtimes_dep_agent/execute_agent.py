@@ -26,6 +26,11 @@ def _parse_args() -> argparse.Namespace:
         help="Path to the model-car YAML config file to preload.",
     )
     parser.add_argument(
+        "--service",
+        default="Gemini",
+        help="Service name to use for the supervisor agent.",
+    )
+    parser.add_argument(
         "--model",
         default="gemini-2.5-pro",
         help="Model name to use for the supervisor agent.",
@@ -36,14 +41,22 @@ def _parse_args() -> argparse.Namespace:
 def main() -> None:
     args = _parse_args()
 
-    api_key = os.environ.get("GEMINI_API_KEY")
+    api_key = os.environ.get("API_KEY")
     if not api_key:
-        raise ValueError("GEMINI_API_KEY environment variable must be set")
+        raise ValueError("API_KEY environment variable must be set")
+    if args.service == "Self-hosted":
+        args.self_hosted_url = os.environ.get("SELF_HOSTED_MODEL_URL")
+        if not args.self_hosted_url:
+            raise ValueError("SELF_HOSTED_MODEL_URL environment variable must be set for self-hosted service")
+    else:
+        args.self_hosted_url = None
 
     # Build the supervisor with preloaded config
     agent = LLMAgent(
         api_key=api_key,
+        service=args.service,
         model=args.model,
+        base_url=args.self_hosted_url,
         bootstrap_config=args.config,
     )
 

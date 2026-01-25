@@ -75,16 +75,35 @@ def build_accelerator_specialist(
             "vllm_image": "registry.redhat.io/rhaiis/vllm-cuda-runtime-rhel9:latest"
             }
         """
+        login_status = check_cluster_login()
+        if "failed" in login_status.lower() or "login" in login_status.lower():
+            metadata = {
+                "gpu_available": False,
+                "gpu_provider": "UNKNOWN",
+                "vllm_image": "",
+                "error": f"Cluster authentication failed: {login_status}",
+            }
+            return json.dumps(metadata, indent=2)
+
         gpu_status, gpu_provider = check_gpu_availability()
         override_image = os.environ.get("VLLM_RUNTIME_IMAGE")
-        vllm_image = override_image or get_vllm_runtime_image_from_template(gpu_provider)
-        
+        try:
+            vllm_image = override_image or get_vllm_runtime_image_from_template(gpu_provider)
+        except Exception as exc:
+            metadata = {
+                "gpu_available": gpu_status,
+                "gpu_provider": gpu_provider,
+                "vllm_image": "",
+                "error": f"Failed to resolve vLLM runtime image: {exc}",
+            }
+            return json.dumps(metadata, indent=2)
+
         metadata = {
             "gpu_available": gpu_status,
             "gpu_provider": gpu_provider,
-            "vllm_image": vllm_image
+            "vllm_image": vllm_image,
         }
-        
+
         return json.dumps(metadata, indent=2)
 
     @tool

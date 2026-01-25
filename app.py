@@ -11,6 +11,7 @@ import pandas as pd
 import json
 from pathlib import Path
 import selectors
+from urllib.parse import urlparse, urlunparse
 
 from runtimes_dep_agent.utils.path_utils import detect_repo_root
 
@@ -32,8 +33,14 @@ if "start_time" not in st.session_state:
     st.session_state.start_time = None
 if "yaml_config" not in st.session_state:
     st.session_state.yaml_config = None
-if "gemini_api_key" not in st.session_state:
-    st.session_state.gemini_api_key = None
+if "service_name" not in st.session_state:
+    st.session_state.service_name = "Gemini"
+if "model_name" not in st.session_state:
+    st.session_state.model_name = "gemini-2.5-pro"
+if "last_service" not in st.session_state:
+    st.session_state.last_service = st.session_state.service_name
+if "api_key" not in st.session_state:
+    st.session_state.api_key = None
 if "oci_pull_secret" not in st.session_state:
     st.session_state.oci_pull_secret = None
 if "extracted_data" not in st.session_state:
@@ -60,6 +67,10 @@ if "vllm_runtime_image" not in st.session_state:
     st.session_state.vllm_runtime_image = vllm_image_env if vllm_image_env else None
 if "runtime_backend" not in st.session_state:
     st.session_state.runtime_backend = None
+if "self_hosted_url" not in st.session_state:
+    st.session_state.self_hosted_url = os.environ.get("SELF_HOSTED_MODEL_URL")
+if "self_hosted_tls_verify" not in st.session_state:
+    st.session_state.self_hosted_tls_verify = False
 
 # Helper function to get value from extracted data with fallback
 def get_value(path: str, default):
@@ -82,57 +93,61 @@ def load_model_info_from_json():
     repo_root = detect_repo_root([Path(__file__).resolve()])
     models_info_path = Path(repo_root, "info", "models_info.json")
     models = []
-    
+
     if not models_info_path.exists():
         return {"num_models": 0, "models": []}
-    
+
     # Don't show data if agent hasn't started yet
     if st.session_state.agent_start_time is None:
         return {"num_models": 0, "models": []}
-    
+
     # Check if file has been updated since agent started (only show if new data)
     try:
         file_mtime = models_info_path.stat().st_mtime
         # Only show if file was modified after agent started
         if file_mtime < st.session_state.agent_start_time:
             return {"num_models": 0, "models": []}
-        
+
         # Check if file is empty (from reset)
         if models_info_path.stat().st_size == 0:
             return {"num_models": 0, "models": []}
     except Exception:
         pass
-    
+
     try:
         with models_info_path.open('r') as f:
             content = f.read().strip()
             if not content:  # Empty file
                 return {"num_models": 0, "models": []}
             precomputed_requirements = json.loads(content)
-        
+
         # Convert precomputed_requirements format to display format
         for model_name, model_data in precomputed_requirements.items():
             # Format parameter count
             param_billion = model_data.get('model_p_billion')
             if param_billion is not None:
                 if param_billion >= 1:
-                    parameter_count = f"{int(param_billion)} Billion" if param_billion == int(param_billion) else f"{param_billion} Billion"
+                    parameter_count = (
+                        f"{int(param_billion)} Billion"
+                        if param_billion == int(param_billion)
+                        else f"{param_billion} Billion"
+                    )
                 else:
                     parameter_count = f"{param_billion * 1000:.0f} Million"
             else:
                 parameter_count = "Not specified"
-            
+
             # Format quantization
             quant_bits = model_data.get('quantization_bits')
             if quant_bits is not None:
                 quantization = f"{quant_bits} bits"
             else:
                 quantization = "Not specified"
-            
+
             estimated_vram = model_data.get('required_vram_gb')
             if estimated_vram is None:
                 estimated_vram = 0.0
-            
+
             models.append({
                 "name": model_data.get('model_name', model_name),
                 "image": model_data.get('image', 'Not specified'),
@@ -142,14 +157,44 @@ def load_model_info_from_json():
                 "estimated_vram_gb": estimated_vram,
                 "supported_arch": model_data.get('supported_arch', 'unknown')
             })
-        
+
         num_models = len(models)
-        
+
     except Exception as e:
         st.error(f"Error loading model info from {models_info_path}: {str(e)}")
         return {"num_models": 0, "models": []}
-    
+
     return {"num_models": num_models, "models": models}
+
+
+def normalize_self_hosted_url(raw_url: str) -> str:
+    """Normalize self-hosted base URL to a v1 root suitable for OpenAI-compatible APIs."""
+    if not raw_url:
+        return ""
+    trimmed = raw_url.strip()
+    if not trimmed:
+        return ""
+    if "://" not in trimmed:
+        trimmed = f"https://{trimmed}"
+    parsed = urlparse(trimmed)
+    scheme = parsed.scheme
+    netloc = parsed.netloc
+    path = parsed.path or ""
+
+    if scheme == "http" and netloc.endswith(":443"):
+        scheme = "https"
+
+    for suffix in ("/v1/chat/completions", "/v1/completions"):
+        if path.endswith(suffix):
+            path = "/v1"
+            break
+
+    if path in ("", "/"):
+        path = "/v1"
+    elif path.endswith("/"):
+        path = path.rstrip("/")
+
+    return urlunparse((scheme, netloc, path, "", "", ""))
 
 
 def load_deployment_matrix():
@@ -464,21 +509,105 @@ def parse_gpu_info():
 # Sidebar for API key and YAML upload
 with st.sidebar:
     st.title("Configuration")
+
+    st.subheader("Service Name")
+    service_options = ["Gemini", "OpenAI", "Anthropic", "Self-hosted", "Other"]
+    current_service = st.session_state.service_name or "Gemini"
+    default_service = current_service if current_service in service_options else "Other"
+    service_index = service_options.index(default_service)
+    selected_service = st.selectbox(
+        "Select the service",
+        options=service_options,
+        index=service_index,
+        help="Pick a provider or choose Other for a custom service.",
+        key="service_select",
+    )
+    custom_service_name = ""
+    if selected_service == "Other":
+        custom_default = "" if current_service in service_options else current_service
+        custom_service_name = st.text_input(
+            "Custom service name",
+            value=custom_default,
+            help="Enter a service name not listed above.",
+            key="service_custom_name",
+        )
+    service_name_value = custom_service_name.strip() if selected_service == "Other" else selected_service
+    if service_name_value:
+        st.session_state.service_name = service_name_value
+        os.environ["SERVICE_NAME"] = service_name_value
+    if selected_service == "Self-hosted":
+        st.subheader("Self-hosted Model URL")
+        self_hosted_url = st.text_input(
+            "Enter the model URL",
+            value=st.session_state.self_hosted_url or "",
+            placeholder="http://localhost:8000/v1",
+            help="Specify the base URL for your self-hosted model endpoint.",
+            key="self_hosted_url_input",
+        )
+        if self_hosted_url:
+            normalized_url = normalize_self_hosted_url(self_hosted_url)
+            if normalized_url != self_hosted_url.strip():
+                st.caption(f"Using normalized URL: {normalized_url}")
+            st.session_state.self_hosted_url = normalized_url
+            os.environ["SELF_HOSTED_MODEL_URL"] = normalized_url
+    else:
+        os.environ.pop("SELF_HOSTED_MODEL_URL", None)
+
+    st.subheader("Model Name")
+    model_presets = {
+        "Gemini": ["gemini-2.5-pro", "gemini-2.0-flash", "gemini-1.5-pro"],
+        "OpenAI": ["gpt-4o-mini", "gpt-4o", "o1-mini"],
+        "Anthropic": ["claude-3-5-sonnet-latest", "claude-3-5-haiku-latest"],
+    }
+    model_defaults = {
+        "Gemini": "gemini-2.5-pro",
+        "OpenAI": "gpt-4o-mini",
+        "Anthropic": "claude-3-5-sonnet-latest",
+        "Self-hosted": "local-model",
+    }
+    if selected_service != st.session_state.last_service:
+        new_default = model_defaults.get(selected_service, "")
+        st.session_state.model_name = new_default
+        st.session_state.last_service = selected_service
+    selected_models = model_presets.get(selected_service, [])
+    model_name_value = st.session_state.model_name or model_defaults.get(selected_service, "")
+    if selected_models:
+        model_options = selected_models
+        model_index = model_options.index(model_name_value) if model_name_value in model_options else 0
+        model_choice = st.selectbox(
+            "Select a model",
+            options=model_options,
+            index=model_index,
+            help="Choose a suggested model.",
+            key="model_select",
+        )
+        model_name_value = model_choice
+    else:
+        model_name_value = st.text_input(
+            "Enter the model name",
+            value=model_name_value,
+            help="Enter the exact model name to use.",
+            key="model_custom_name",
+        )
+
+    if model_name_value:
+        st.session_state.model_name = model_name_value
+        os.environ["MODEL_NAME"] = model_name_value
     
-    # Gemini API Key input (mandatory)
-    st.subheader("Gemini API Key *")
+    # API Key input (mandatory)
+    st.subheader("API Key *")
     api_key_input = st.text_input(
-        "Enter your Gemini API Key",
+        "Enter your API Key",
         type="password",
-        value=st.session_state.gemini_api_key or "",
-        placeholder="Enter your Gemini API Key",
+        value=st.session_state.api_key or "",
+        placeholder="Enter your API Key",
         help="Get your API key to Run the Agent (required)"
     )
     
     if api_key_input:
-        st.session_state.gemini_api_key = api_key_input
+        st.session_state.api_key = api_key_input
         # Set as environment variable immediately so it's available to the agent
-        os.environ["GEMINI_API_KEY"] = api_key_input
+        os.environ["API_KEY"] = api_key_input
         st.markdown('<span style="background-color: #d4edda; color: #155724; padding: 4px 8px; border-radius: 4px; font-size: 0.85em;">Configured</span>', unsafe_allow_html=True)
     
     
@@ -513,6 +642,7 @@ with st.sidebar:
     if vllm_image_input:
         st.session_state.vllm_runtime_image = vllm_image_input
         st.markdown('<span style="background-color: #d4edda; color: #155724; padding: 4px 8px; border-radius: 4px; font-size: 0.85em;">Configured</span>', unsafe_allow_html=True)
+        os.environ["VLLM_RUNTIME_IMAGE"] = vllm_image_input
     
     # Runtime Accelerator dropdown (optional)
     st.subheader("Runtime Accelerator")
@@ -632,8 +762,8 @@ if not st.session_state.agent_started:
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         if st.button("Start AI Agent", width='stretch', type="primary"):
-            if not st.session_state.gemini_api_key:
-                st.error("⚠️ Please enter your Gemini API key in the sidebar first!")
+            if not st.session_state.api_key:
+                st.error("⚠️ Please enter your API key in the sidebar first!")
             elif not st.session_state.oci_pull_secret:
                 st.error("⚠️ Please enter your OCI Registry Pull Secret in the sidebar first!")
             elif not st.session_state.yaml_config:
@@ -642,10 +772,14 @@ if not st.session_state.agent_started:
                 # Environment variables are already set when user enters them in sidebar
                 try:
                     # Ensure environment variables are set (they should already be set from sidebar inputs)
-                    if st.session_state.gemini_api_key:
-                        os.environ["GEMINI_API_KEY"] = st.session_state.gemini_api_key
+                    if st.session_state.api_key:
+                        os.environ["API_KEY"] = st.session_state.api_key
                     if st.session_state.oci_pull_secret:
                         os.environ["OCI_REGISTRY_PULL_SECRET"] = st.session_state.oci_pull_secret
+                    if st.session_state.service_name:
+                        os.environ["SERVICE_NAME"] = st.session_state.service_name
+                    if st.session_state.vllm_runtime_image:
+                        os.environ["VLLM_RUNTIME_IMAGE"] = st.session_state.vllm_runtime_image
                     
                     # Save uploaded YAML to a file (YAML upload is mandatory)
                     # Use original YAML content to preserve exact format
@@ -676,10 +810,10 @@ else:
     col1, col2 = st.columns(2)
     
     with col1:
-        if st.session_state.gemini_api_key:
-            st.markdown('<span style="background-color: #28a745; color: white; padding: 6px 12px; border-radius: 4px; font-size: 0.9em; font-weight: 500;">Gemini API Key: Verified</span>', unsafe_allow_html=True)
+        if st.session_state.api_key:
+            st.markdown('<span style="background-color: #28a745; color: white; padding: 6px 12px; border-radius: 4px; font-size: 0.9em; font-weight: 500;">API Key: Verified</span>', unsafe_allow_html=True)
         else:
-            st.markdown('<span style="background-color: #dc3545; color: white; padding: 6px 12px; border-radius: 4px; font-size: 0.9em; font-weight: 500;">Gemini API Key: Not configured</span>', unsafe_allow_html=True)
+            st.markdown('<span style="background-color: #dc3545; color: white; padding: 6px 12px; border-radius: 4px; font-size: 0.9em; font-weight: 500;">API Key: Not configured</span>', unsafe_allow_html=True)
     
     with col2:
         if st.session_state.oci_pull_secret:
@@ -1157,6 +1291,8 @@ else:
                     try:
                         # Run the CLI command: agent --config <config_path>
                         config_path = st.session_state.config_path
+                        service_name = st.session_state.service_name
+                        model_name = st.session_state.model_name
                         
                         # Find the agent command - try venv first, then system PATH
                         project_dir = os.path.dirname(os.path.abspath(__file__))
@@ -1164,18 +1300,18 @@ else:
                         cmd = None
                         
                         if os.path.exists(venv_agent):
-                            cmd = [venv_agent, "--config", config_path]
+                            cmd = [venv_agent, "--config", config_path, "--service", service_name, "--model", model_name]
                         else:
                             # Try to find agent in PATH
                             import shutil
                             agent_path = shutil.which("agent")
                             if agent_path:
-                                cmd = [agent_path, "--config", config_path]
+                                cmd = [agent_path, "--config", config_path, "--service", service_name, "--model", model_name]
                             else:
                                 # Fallback: use Python module directly
                                 python_cmd = shutil.which("python3") or shutil.which("python")
                                 if python_cmd:
-                                    cmd = [python_cmd, "-m", "runtimes_dep_agent.execute_agent", "--config", config_path]
+                                    cmd = [python_cmd, "-m", "runtimes_dep_agent.execute_agent", "--config", config_path, "--service", service_name, "--model", model_name]
                                 else:
                                     raise FileNotFoundError("Could not find 'agent' command or Python. Make sure the package is installed.")
                         
