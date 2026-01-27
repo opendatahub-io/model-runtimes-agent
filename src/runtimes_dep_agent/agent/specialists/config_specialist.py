@@ -102,7 +102,7 @@ def build_config_specialist(
         deployment_matrix_path = Path(repo_root, "info", "deployment_matrix.json")
 
         # ------------------------------------------------------------------ #
-        # 2. Load decision matrix (deployable vs non-deployable)
+        # 2. Load deployment matrix (deployable vs non-deployable)
         # ------------------------------------------------------------------ #
         deployable_names: set[str] = set()
         if deployment_matrix_path.exists():
@@ -118,10 +118,9 @@ def build_config_specialist(
                         ):
                             deployable_names.add(entry["model_name"])
             except Exception as e:
-                # If this fails, treat it as "no decision matrix" and keep all models.
-                return f"Error: Failed to read decision_matrix.json: {e}"
+                return f"Error: Failed to read deployment_matrix.json: {e}"
         else:
-            return "Error: decision_matrix.json not found. Cannot determine deployable models."
+            return "Error: deployment_matrix.json not found. Cannot determine deployable models."
 
         # ------------------------------------------------------------------ #
         # 3. Load base model-car YAML

@@ -17,9 +17,52 @@ from langchain_core.tools import tool
 import yaml
 
 from . import SpecialistSpec
-
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+def _extract_registry_host(image: str) -> str | None:
+    """Extract registry host from an image reference (e.g., oci://registry/.../name:tag)."""
+    if not image:
+        return None
+    trimmed = image.strip()
+    for prefix in ("oci://", "docker://", "http://", "https://"):
+        if trimmed.startswith(prefix):
+            trimmed = trimmed[len(prefix):]
+            break
+    if not trimmed:
+        return None
+    # Host is the first path segment.
+    parts = trimmed.split("/", 1)
+    host = parts[0].strip()
+    return host or None
+
+
+def _infer_registry_from_modelcar(modelcar_cfg: dict) -> str | None:
+    """Infer a single registry host from model-car image fields, if possible."""
+    if not isinstance(modelcar_cfg, dict):
+        return None
+    model_block = modelcar_cfg.get("model-car")
+    if isinstance(model_block, dict):
+        model_entries = [model_block]
+    elif isinstance(model_block, list):
+        model_entries = model_block
+    else:
+        return None
+
+    registries: set[str] = set()
+    for entry in model_entries:
+        if not isinstance(entry, dict):
+            continue
+        image = entry.get("image")
+        if not isinstance(image, str):
+            continue
+        host = _extract_registry_host(image)
+        if host:
+            registries.add(host)
+
+    if len(registries) == 1:
+        return next(iter(registries))
+    return None
 
 
 def build_qa_specialist(
@@ -32,7 +75,7 @@ def build_qa_specialist(
     @tool
     def run_odh_tests(
         runtime_image: str,
-        gpu_provider: str
+        gpu_provider: str,
     ) -> str:
         """
         Run the ODH model validation test suite using a staged kubeconfig under /tmp.
@@ -85,9 +128,16 @@ def build_qa_specialist(
 
         try:
             with open(tmp_modelcar_path, "r") as f:
-                yaml.safe_load(f)
+                modelcar_cfg = yaml.safe_load(f)
         except Exception as e:
             msg = f"QA_ERROR:MODELCAR_YAML_INVALID Failed to parse {tmp_modelcar_path}: {e}"
+            logger.error(msg)
+            print(f"[QA] {msg}", flush=True)
+            return msg
+
+        registry_from_modelcar = _infer_registry_from_modelcar(modelcar_cfg or {})
+        if not registry_from_modelcar:
+            msg = "QA_ERROR:MODELCAR_REGISTRY_UNDETERMINED Could not determine a single registry host from model-car config."
             logger.error(msg)
             print(f"[QA] {msg}", flush=True)
             return msg
@@ -111,7 +161,7 @@ def build_qa_specialist(
                 "--model_car_yaml_path=/home/odh/opendatahub-tests/modelcar.yaml",
                 f"--vllm-runtime-image={VLLM_RUNTIME_IMAGE}",
                 f"--supported-accelerator-type={gpu_provider}",
-                "--registry-host=registry.redhat.io",
+                f"--registry-host={registry_from_modelcar}",
                 "--snapshot-update",
                 "--log-file=/home/odh/opendatahub-tests/results/pytest-logs.log",
             ]
@@ -202,7 +252,7 @@ def build_qa_specialist(
     )
 
     @tool
-    def analyze_qa_results(request: str, runtime_image: str, gpu_provider: str) -> str:
+    def analyze_qa_results(request: str, runtime_image: str, gpu_provider: str):
         """
         Supervisor-facing entrypoint. The supervisor must pass:
             - request: what to do (e.g. "run QA and summarize results")
