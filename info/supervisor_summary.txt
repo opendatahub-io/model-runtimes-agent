@@ -1,31 +1,29 @@
 ### Configuration Summary
-The Configuration Specialist reported the following requirements for the preloaded model:
-- **Model:** Llama-3.1-8B-Instruct
-- **Estimated VRAM Required:** 18 GB
+As reported by the Configuration Specialist, the `Llama-3.1-8B-Instruct` model requires an estimated 18 GB of VRAM for deployment. The model has no quantization applied and is built for the amd64 architecture.
 
 ### Accelerator Summary
-The Accelerator Specialist reported the following about the cluster environment:
-- **Status:** GPU available and cluster is properly authenticated.
-- **Provider:** NVIDIA
-- **Available VRAM per GPU:** 80.0 GB
-- **vLLM Runtime Image:** `quay.io/aipcc/rhaiis/cuda-ubi9:3.-1769597087`
+The Accelerator Specialist reported that the cluster is properly authenticated and has an available NVIDIA GPU. The environment is healthy and compatible with vLLM runtimes. The runtime image for deployment is `quay.io/aipcc/rhaiis/cuda-ubi9:3.3.0-1769597087`.
 
 ### Deployment Decision
 The Decision Specialist issued a **GO** verdict for deployment.
 
 The decision was based on the following:
-- **GPU Capacity:** The model's required 18 GB of VRAM is well within the available 80.0 GB on each accelerator.
-- **Serving Arguments:** The specialist identified that no serving arguments were provided. It generated and applied an optimized default configuration to ensure stable deployment.
-- **Environment Health:** The Accelerator Specialist confirmed that the cluster is reachable and authenticated, indicating a healthy environment for deployment.
+*   **GPU Capacity vs Model Requirements**: The model's 18 GB VRAM requirement is well within the 80 GB capacity of the available NVIDIA GPU.
+*   **Serving-argument Suitability**: The initial model-car configuration was missing serving arguments. The specialist recommended optimized defaults to ensure stability.
+*   **Environment / Access Health**: The Accelerator Specialist confirmed that cluster access is healthy with no authentication or connectivity failures.
 
-The following optimized serving arguments were written back to the model-car configuration by the Configuration Specialist:
+The following optimized serving arguments were recommended by the Decision Specialist and have been written back to the model-car configuration by the Configuration Specialist:
 ```json
 {
-  "tensor_parallel_size": 1,
-  "max_model_len": 2048
+  "serving_arguments": {
+    "args": [
+      "--tensor-parallel-size=1",
+      "--max-model-len=2048"
+    ]
+  }
 }
 ```
 
 
 ### QA Validation
-The QA Specialist ran the Opendatahub model validation test suite and reported that **QA Passed**. The test successfully deployed the `Llama-3.1-8B-Instruct` model using the specified runtime image on an NVIDIA GPU, and the model served inference requests correctly. The vLLM runtime image is validated and approved for deployment.
+The QA Specialist ran the OpenDataHub model validation test suite using the recommended runtime image. The tests **PASSED**, confirming that the model deploys correctly and that inference requests succeed. No critical errors were reported.

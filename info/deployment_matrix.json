@@ -1,1 +1,7 @@
-[{"model_name":"Llama-3.1-8B-Instruct","deployable":true,"reason":"The model's VRAM requirement (18 GB) fits within the available GPU capacity (80.0 GB). Default serving arguments have been generated as none were provided."}]
+[
+  {
+    "model_name": "Llama-3.1-8B-Instruct",
+    "deployable": true,
+    "reason": "Model fits on a single GPU (18 GB required vs 80 GB available). Serving arguments were missing and have been defaulted to tensor-parallel-size=1 and max-model-len=2048."
+  }
+]

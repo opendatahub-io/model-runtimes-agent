@@ -25,10 +25,10 @@ def _extract_registry_host(image: str) -> str | None:
     if not image:
         return None
     trimmed = image.strip()
-    for prefix in ("oci://", "docker://", "http://", "https://", "quay.io/"):
-        if trimmed.startswith("quay.io/"):
+    if trimmed.startswith("quay.io/"):
             parts = trimmed.split("/", 1)
             return parts[0].strip()
+    for prefix in ("oci://", "docker://", "http://", "https://", "quay.io/"):
         if trimmed.startswith(prefix):
             trimmed = trimmed[len(prefix):]
             break
