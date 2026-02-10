@@ -701,7 +701,7 @@ else:
         if st.session_state.oci_pull_secret1:
             st.markdown('<span style="background-color: #28a745; color: white; padding: 6px 12px; border-radius: 4px; font-size: 0.9em; font-weight: 500;">OCI Pull Secret 1: Verified</span>', unsafe_allow_html=True)
         else:
-            st.markdown('<span style="background-color: #dc3545; color: white; padding: 6px 12px; border-radius: 4px; font-size: 0.9em; font-weight: 500;">OCI Pull Secret: Not configured</span>', unsafe_allow_html=True)
+            st.markdown('<span style="background-color: #dc3545; color: white; padding: 6px 12px; border-radius: 4px; font-size: 0.9em; font-weight: 500;">OCI Pull Secret 1: Not configured</span>', unsafe_allow_html=True)
     
     
     # Workflow progress

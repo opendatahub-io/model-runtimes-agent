@@ -29,7 +29,7 @@ Supervisor-driven orchestration for analysing model-car configurations and valid
 - A Google Gemini API key (`GEMINI_API_KEY`) for `langchain-google-genai`
 - `skopeo` available on `PATH` (for container metadata; falls back gracefully if missing)
 - `podman` available on `PATH` (to run the QA container; required if you want the QA specialist to execute)
-- Environment for QA: set `OCI_REGISTRY_PULL_SECRET` (base64 string for registry.redhat.io), ensure `KUBECONFIG` points to a reachable OpenShift cluster (defaults to `~/.kube/config`), and optionally set `VLLM_RUNTIME_IMAGE` if you want to override the runtime passed to ODH tests
+- Environment for QA: set `OCI_REGISTRY_PULL_SECRET1` (base64 string for your primary registry, typically `registry.redhat.io`), optionally set `OCI_REGISTRY_PULL_SECRET2` for a second registry (for example `quay.io`), ensure `KUBECONFIG` points to a reachable OpenShift cluster (defaults to `~/.kube/config`), and optionally set `VLLM_RUNTIME_IMAGE` if you want to override the runtime passed to ODH tests
 - Dependencies listed in `pyproject.toml`
 
 ## Installation
@@ -60,7 +60,8 @@ The app opens in your browser and prompts for the API key, pull secret, and YAML
 2. **Model-car file** – pass `--config /path/to/modelcar.yaml` (defaults to `config-yaml/sample_modelcar_config.yaml`; use the `*.base.yaml` template or any custom file).
 3. **LLM choice (optional)** – override `--model` if you want something other than `gemini-2.5-pro`.
 4. **QA prerequisites (only if you expect the supervisor to run QA):**
-   - `OCI_REGISTRY_PULL_SECRET` – base64 string accepted by `registry.redhat.io`.
+   - `OCI_REGISTRY_PULL_SECRET1` – base64 string accepted by your primary registry (often `registry.redhat.io`).
+   - `OCI_REGISTRY_PULL_SECRET2` – optional base64 string for a second registry (for example `quay.io`).
    - `KUBECONFIG` – path to a valid OpenShift kubeconfig (defaults to `~/.kube/config`).
    - `VLLM_RUNTIME_IMAGE` – optional override of the vLLM runtime image (otherwise the accelerator report supplies the correct image).
 
@@ -189,16 +190,17 @@ Because the base template is never mutated you can always diff the generated ove
 
 The QA Specialist executes the upstream Opendatahub model validation suite so the deployment story ends with automated regression coverage instead of just a theoretical GO/NO-GO. It only runs after the accelerator step reports a healthy cluster.
 
-- The specialist stages your kubeconfig (`$KUBECONFIG` or `~/.kube/config`), OCI pull secret (`$OCI_REGISTRY_PULL_SECRET`), and `config-yaml/sample_modelcar_config.generated.yaml` into `/tmp/odh-tests-*`.
+- The specialist stages your kubeconfig (`$KUBECONFIG` or `~/.kube/config`), OCI pull secret(s) (`$OCI_REGISTRY_PULL_SECRET1`, plus optional `$OCI_REGISTRY_PULL_SECRET2`), and `config-yaml/sample_modelcar_config.generated.yaml` into `/tmp/odh-tests-*`.
 - It then runs `podman run --rm quay.io/opendatahub/opendatahub-tests:latest ...` with the staged assets mounted in and streams logs back to the terminal prefixed with `[QA]`.
 - The final line starts with `QA_OK:` on success or `QA_ERROR:<code>` on failure (`QA_ERROR:KUBECONFIG_MISSING`, `QA_ERROR:TESTS_FAILED`, etc.), making it easy for the Decision Specialist to summarise next steps.
 
 When the accelerator metadata is healthy it emits a JSON blob containing `vllm_runtime_image`. The supervisor forwards this image string verbatim to the QA Specialist so pytest runs with the same container you intend to deploy. If you set the `VLLM_RUNTIME_IMAGE` environment variable it overrides the recommended value (useful for testing experimental runtime builds).
 
-Environment variables:
+Environment variables (CLI + QA):
 
 ```bash
-export OCI_REGISTRY_PULL_SECRET="..."        # REQUIRED: base64 pull secret accepted by registry.redhat.io
+export OCI_REGISTRY_PULL_SECRET1="..."       # REQUIRED: base64 pull secret for your primary registry
+export OCI_REGISTRY_PULL_SECRET2="..."       # Optional: base64 pull secret for a second registry
 export KUBECONFIG="$HOME/.kube/config"       # Optional override (defaults to ~/.kube/config)
 export VLLM_RUNTIME_IMAGE="quay.io/modh/..." # Optional override; if unset the accelerator-supplied image is used for QA
 ```
