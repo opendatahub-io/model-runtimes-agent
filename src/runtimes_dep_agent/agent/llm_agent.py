@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 
-
+runtime_image = os.environ.get("VLLM_RUNTIME_IMAGE", "")
 
 class LLMAgent:
     """Builds a collection of specialists and exposes a supervisor entry point."""
@@ -97,8 +97,6 @@ class LLMAgent:
 
     def _create_supervisor(self):
         tools = [spec.tool for spec in self.specialists]
-
-        runtime_image = os.environ.get("VLLM_RUNTIME_IMAGE", "")
 
         prompt = (
             "You are a supervisor agent that coordinates several specialist tools:\n"

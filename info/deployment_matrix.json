@@ -1,7 +1,1 @@
-[
-  {
-    "model_name": "ministral-3-14b-instruct-2512",
-    "deployable": true,
-    "reason": "The model is deployable as it requires 31 GB of VRAM, which fits into the available 40 GB per GPU. Serving arguments were missing and have been added with safe defaults, including setting tensor_parallel_size=1 for single-GPU deployment."
-  }
-]
+[{"model_name":"Llama-3.1-8B-Instruct","deployable":true,"reason":"The model's VRAM requirement (18 GB) fits within the available GPU capacity (80.0 GB). Default serving arguments have been generated as none were provided."}]

@@ -174,6 +174,7 @@ config-yaml/*.generated.yaml
 .env
 .env.local
 .env.*.local
+env.sh
 !example-env.sh
 !example*.sh
 

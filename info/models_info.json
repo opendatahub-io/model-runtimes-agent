@@ -1,12 +1,12 @@
 {
-  "ministral-3-14b-instruct-2512": {
-    "model_name": "ministral-3-14b-instruct-2512",
-    "image": "registry.stage.redhat.io/rhai/modelcar-ministral-3-14b-instruct-2512:3.0",
+  "Llama-3.1-8B-Instruct": {
+    "model_name": "Llama-3.1-8B-Instruct",
+    "image": "oci://registry.redhat.io/rhelai1/modelcar-llama-3-1-8b-instruct:1.5",
     "arguments": [],
-    "model_size_gb": 29.34,
-    "model_p_billion": 14.0,
+    "model_size_gb": 14.98,
+    "model_p_billion": 8.0,
     "quantization_bits": null,
-    "required_vram_gb": 31,
+    "required_vram_gb": 18,
     "supported_arch": "amd64"
   }
 }

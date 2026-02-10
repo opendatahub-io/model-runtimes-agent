@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
-from typing import Callable
+from typing import Callable, List
 
 from langchain.agents import create_agent
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -25,7 +25,10 @@ def _extract_registry_host(image: str) -> str | None:
     if not image:
         return None
     trimmed = image.strip()
-    for prefix in ("oci://", "docker://", "http://", "https://"):
+    for prefix in ("oci://", "docker://", "http://", "https://", "quay.io/"):
+        if trimmed.startswith("quay.io/"):
+            parts = trimmed.split("/", 1)
+            return parts[0].strip()
         if trimmed.startswith(prefix):
             trimmed = trimmed[len(prefix):]
             break
@@ -97,13 +100,13 @@ def build_qa_specialist(
                 host_modelcar_path = fallback_config
             else:
                 return f"QA_ERROR:MODELCAR_NOT_FOUND {generated_config}"
-        REGISTRY_PULL_SECRET = os.environ.get("OCI_REGISTRY_PULL_SECRET", "")
-        if not REGISTRY_PULL_SECRET:
+        REGISTRY_PULL_SECRET1 = os.environ.get("OCI_REGISTRY_PULL_SECRET1", "")
+        REGISTRY_PULL_SECRET2 = os.environ.get("OCI_REGISTRY_PULL_SECRET2", "")
+        if not REGISTRY_PULL_SECRET1:
             msg = "QA_ERROR:OCI_PULL_SECRET_MISSING OCI registry pull secret not set in environment."
             logger.error(msg)
             print(f"[QA] {msg}", flush=True)
             return msg
-        VLLM_RUNTIME_IMAGE = os.environ.get("VLLM_RUNTIME_IMAGE", runtime_image)
 
         host_kubeconfig = os.environ.get(
             "KUBECONFIG", os.path.expanduser("~/.kube/config")
@@ -136,6 +139,8 @@ def build_qa_specialist(
             return msg
 
         registry_from_modelcar = _infer_registry_from_modelcar(modelcar_cfg or {})
+        registry_from_image = _extract_registry_host(runtime_image)
+        
         if not registry_from_modelcar:
             msg = "QA_ERROR:MODELCAR_REGISTRY_UNDETERMINED Could not determine a single registry host from model-car config."
             logger.error(msg)
@@ -151,19 +156,23 @@ def build_qa_specialist(
             cmd = [
                 "podman", "run", "--rm",
                 "-e", "KUBECONFIG=/home/odh/.kube/config",
-                "-e", f"OCI_REGISTRY_PULL_SECRET={REGISTRY_PULL_SECRET}",
                 "-v", f"{staged_kubeconfig}:/home/odh/.kube/config:Z",
                 "-v", f"{results_dir}:/home/odh/opendatahub-tests/results:Z",
                 "-v", f"{tmp_modelcar_path}:/home/odh/opendatahub-tests/modelcar.yaml:Z",
                 image,
+                "-m",
+                "model_validation",
                 "-vv",
                 "tests/model_serving/model_runtime/model_validation/test_modelvalidation.py",
                 "--model_car_yaml_path=/home/odh/opendatahub-tests/modelcar.yaml",
-                f"--vllm-runtime-image={VLLM_RUNTIME_IMAGE}",
+                f"--vllm-runtime-image={runtime_image}",
                 f"--supported-accelerator-type={gpu_provider}",
+                f"--registry-pull-secret={REGISTRY_PULL_SECRET1}",
+                f"--registry-pull-secret={REGISTRY_PULL_SECRET2}",
                 f"--registry-host={registry_from_modelcar}",
+                f"--registry-host={registry_from_image}",
                 "--snapshot-update",
-                "--log-file=/home/odh/opendatahub-tests/results/pytest-logs.log",
+                "--log-file=/tmp/pytest-tests.log",
             ]
 
 

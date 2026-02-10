@@ -34,8 +34,10 @@ if "yaml_config" not in st.session_state:
     st.session_state.yaml_config = None
 if "gemini_api_key" not in st.session_state:
     st.session_state.gemini_api_key = None
-if "oci_pull_secret" not in st.session_state:
-    st.session_state.oci_pull_secret = None
+if "oci_pull_secret1" not in st.session_state:
+    st.session_state.oci_pull_secret1 = None
+if "oci_pull_secret2" not in st.session_state:
+    st.session_state.oci_pull_secret2 = None
 if "extracted_data" not in st.session_state:
     st.session_state.extracted_data = None
 if "agent_result" not in st.session_state:
@@ -465,8 +467,8 @@ def parse_gpu_info():
 with st.sidebar:
     st.title("Configuration")
     
-    # Gemini API Key input (mandatory)
-    st.subheader("Gemini API Key *")
+    # Gemini API Key input (required) *
+    st.subheader("Gemini API Key (required) *")
     api_key_input = st.text_input(
         "Enter your Gemini API Key",
         type="password",
@@ -483,39 +485,51 @@ with st.sidebar:
     
     
     # OCI Registry Pull Secret input (mandatory)
-    st.subheader("OCI Registry Pull Secret *")
+    st.subheader("OCI Registry Pull Secret (required) *")
     oci_secret_input = st.text_input(
         "Enter your OCI Registry Pull Secret",
         type="password",
-        value=st.session_state.oci_pull_secret or "",
+        value=st.session_state.oci_pull_secret1 or "",
         help="Enter your OCI registry pull secret for authentication (required)"
     )
     
     if oci_secret_input:
-        st.session_state.oci_pull_secret = oci_secret_input
+        st.session_state.oci_pull_secret1 = oci_secret_input
         # Set as environment variable immediately so it's available to the agent
-        os.environ["OCI_REGISTRY_PULL_SECRET"] = oci_secret_input
+        os.environ["OCI_REGISTRY_PULL_SECRET1"] = oci_secret_input
         st.markdown('<span style="background-color: #d4edda; color: #155724; padding: 4px 8px; border-radius: 4px; font-size: 0.85em;">Configured</span>', unsafe_allow_html=True)
     
+    st.subheader("Additional Registry Pull Secret (if needed)")
+    oci_secret_input2 = st.text_input(
+        "Enter additional Registry Pull Secret (if needed).e.g. quay.io",
+        type="password",
+        value=st.session_state.oci_pull_secret2 or "",
+        help="If your deployment requires a second registry pull secret, enter it here (optional).e.g. quay.io"
+    )
+    if oci_secret_input2:
+        st.session_state.oci_pull_secret2 = oci_secret_input2
+        # Set as environment variable immediately so it's available to the agent
+        os.environ["OCI_REGISTRY_PULL_SECRET2"] = oci_secret_input2
+        st.markdown('<span style="background-color: #d4edda; color: #155724; padding: 4px 8px; border-radius: 4px; font-size: 0.85em;">Configured</span>', unsafe_allow_html=True)
     st.divider()
     
     # vLLM Runtime Image input (optional)
-    st.subheader("vLLM Runtime Image")
-    # Check environment variable if session state is not set
-    default_vllm_image = st.session_state.vllm_runtime_image or os.environ.get("VLLM_RUNTIME_IMAGE", "")
+    st.subheader("vLLM Runtime Image (Optional)")
+    default_vllm_image = st.session_state.vllm_runtime_image
     vllm_image_input = st.text_input(
         "Enter vLLM Runtime Image",
         value=default_vllm_image,
         placeholder="e.g., quay.io/opendatahub/vllm-runtime:latest",
-        help="Specify the vLLM runtime image to use for deployment (optional). Can also be set via VLLM_RUNTIME_IMAGE environment variable."
+        help="Specify the vLLM runtime image to use for deployment (optional). If not provided, the agent will use the image from the Template"
     )
     
     if vllm_image_input:
         st.session_state.vllm_runtime_image = vllm_image_input
         st.markdown('<span style="background-color: #d4edda; color: #155724; padding: 4px 8px; border-radius: 4px; font-size: 0.85em;">Configured</span>', unsafe_allow_html=True)
+        os.environ["VLLM_RUNTIME_IMAGE"] = vllm_image_input
     
     # Runtime Accelerator dropdown (optional)
-    st.subheader("Runtime Accelerator")
+    st.subheader("Runtime Accelerator (Optional)")
     runtime_backend_options = [
         "Nvidia - CUDA",
         "AMD - ROCm",
@@ -634,7 +648,7 @@ if not st.session_state.agent_started:
         if st.button("Start AI Agent", width='stretch', type="primary"):
             if not st.session_state.gemini_api_key:
                 st.error("⚠️ Please enter your Gemini API key in the sidebar first!")
-            elif not st.session_state.oci_pull_secret:
+            elif not st.session_state.oci_pull_secret1:
                 st.error("⚠️ Please enter your OCI Registry Pull Secret in the sidebar first!")
             elif not st.session_state.yaml_config:
                 st.error("⚠️ Please upload a YAML configuration file in the sidebar first!")
@@ -644,8 +658,10 @@ if not st.session_state.agent_started:
                     # Ensure environment variables are set (they should already be set from sidebar inputs)
                     if st.session_state.gemini_api_key:
                         os.environ["GEMINI_API_KEY"] = st.session_state.gemini_api_key
-                    if st.session_state.oci_pull_secret:
-                        os.environ["OCI_REGISTRY_PULL_SECRET"] = st.session_state.oci_pull_secret
+                    if st.session_state.oci_pull_secret1:
+                        os.environ["OCI_REGISTRY_PULL_SECRET1"] = st.session_state.oci_pull_secret1
+                    if st.session_state.oci_pull_secret2:
+                        os.environ["OCI_REGISTRY_PULL_SECRET2"] = st.session_state.oci_pull_secret2
                     
                     # Save uploaded YAML to a file (YAML upload is mandatory)
                     # Use original YAML content to preserve exact format
@@ -682,8 +698,8 @@ else:
             st.markdown('<span style="background-color: #dc3545; color: white; padding: 6px 12px; border-radius: 4px; font-size: 0.9em; font-weight: 500;">Gemini API Key: Not configured</span>', unsafe_allow_html=True)
     
     with col2:
-        if st.session_state.oci_pull_secret:
-            st.markdown('<span style="background-color: #28a745; color: white; padding: 6px 12px; border-radius: 4px; font-size: 0.9em; font-weight: 500;">OCI Pull Secret: Verified</span>', unsafe_allow_html=True)
+        if st.session_state.oci_pull_secret1:
+            st.markdown('<span style="background-color: #28a745; color: white; padding: 6px 12px; border-radius: 4px; font-size: 0.9em; font-weight: 500;">OCI Pull Secret 1: Verified</span>', unsafe_allow_html=True)
         else:
             st.markdown('<span style="background-color: #dc3545; color: white; padding: 6px 12px; border-radius: 4px; font-size: 0.9em; font-weight: 500;">OCI Pull Secret: Not configured</span>', unsafe_allow_html=True)
     
