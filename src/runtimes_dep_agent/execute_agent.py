@@ -8,6 +8,7 @@ import os
 import shlex
 import subprocess
 import sys
+import tempfile
 import time
 from langgraph.errors import GraphRecursionError
 from pathlib import Path
@@ -124,6 +125,16 @@ def _run_oc_login(command: str, progress: ProgressLogger) -> None:
     if tokens and tokens[0] != "oc":
         tokens = ["oc"] + tokens
 
+    # Only allow 'oc login'; reject any other oc subcommand
+    subcommand = None
+    for t in tokens[1:]:
+        if not t.startswith("-"):
+            subcommand = t
+            break
+    if subcommand != "login":
+        progress.fail("Only 'oc login' is allowed; other oc subcommands are not permitted.")
+        sys.exit(1)
+
     server = next((t.split("=", 1)[1] for t in tokens if t.startswith("--server=")), None)
     if not server:
         for i, t in enumerate(tokens):
@@ -225,7 +236,16 @@ def _run_streaming(agent: LLMAgent, progress: ProgressLogger) -> str:
                         label = _TOOL_LABELS.get(tool_name, tool_name)
                         text = _extract_message_text(msg)
                         summary = _summarize_tool_response(tool_name, text)
-                        if summary:
+                        content = f"{(summary or '')}\n{(text or '')}".lower()
+                        is_error = any(
+                            ind in content
+                            for ind in ("unauthoriz", "failed", "error")
+                        )
+                        if is_error:
+                            progress.fail(f"{label} failed")
+                            if summary:
+                                progress.detail(f"{DIM}{summary}{RESET}")
+                        elif summary:
                             progress.success(f"{label} done")
                             progress.detail(f"{DIM}{summary}{RESET}")
                         else:
@@ -251,6 +271,11 @@ def main() -> None:
 
     progress = ProgressLogger(total_steps=5)
 
+    # Per-run artifact directory to avoid shared-repo concurrency and data-leak risks
+    run_dir = Path(tempfile.mkdtemp(prefix="agent_run_"))
+    info_dir = run_dir / "info"
+    info_dir.mkdir(parents=True, exist_ok=True)
+
     # 2. oc login
     oc_login_cmd = args.oc_login or os.environ.get("OC_LOGIN_COMMAND")
     if oc_login_cmd:
@@ -266,16 +291,15 @@ def main() -> None:
         api_key=api_key,
         model=args.model,
         bootstrap_config=args.config,
+        info_dir=info_dir,
     )
     progress.success("Agent ready")
 
     # 5. Stream the supervisor pipeline with live output
     output_text = _run_streaming(agent, progress)
 
-    # Write summary
-    repo_root = detect_repo_root()
-    summary_path = Path(repo_root, "info", "supervisor_summary.txt")
-    summary_path.parent.mkdir(parents=True, exist_ok=True)
+    # Write summary to per-run info dir
+    summary_path = info_dir / "supervisor_summary.txt"
     with open(summary_path, "w") as f:
         f.write(output_text)
 
@@ -292,7 +316,7 @@ def main() -> None:
         from .report.html_report import generate_html_report
 
         report_path = generate_html_report(
-            info_dir=Path(repo_root, "info"),
+            info_dir=info_dir,
             output_path=Path(args.report_output),
             agent_output=output_text,
             preflight_results=[r.to_dict() for r in results],

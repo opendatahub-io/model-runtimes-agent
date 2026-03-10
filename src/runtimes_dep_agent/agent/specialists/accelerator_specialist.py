@@ -10,6 +10,8 @@ from langchain.agents import create_agent
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.tools import tool
 
+from pathlib import Path
+
 from . import SpecialistSpec
 from ...validators.accelerator_validator import (
     check_cluster_login,
@@ -23,6 +25,7 @@ def build_accelerator_specialist(
     llm: BaseChatModel,
     extract_text: Callable[[dict], str],
     precomputed_requirements: dict | None = None,
+    info_dir: Path | None = None,
 ) -> SpecialistSpec:
     """Return the accelerator specialist agent and the supervisor-facing tool."""
 
@@ -56,7 +59,7 @@ def build_accelerator_specialist(
         if "failed" in login_status.lower() or "login" in login_status.lower():
             return f"Error: {login_status}. Please login to the cluster first."
         
-        file_path = get_gpu_info()
+        file_path = get_gpu_info(info_dir)
         gpu_status, gpu_provider = check_gpu_availability()
         
         if gpu_status:
@@ -114,7 +117,7 @@ def build_accelerator_specialist(
             )
         
         # Get detailed info
-        file_path = get_gpu_info()
+        file_path = get_gpu_info(info_dir)
         
         result = (
             f"Accelerator Validation Result:\n"

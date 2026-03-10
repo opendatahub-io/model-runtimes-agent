@@ -68,6 +68,8 @@ def check_tool(name: str) -> ToolStatus:
     if not path:
         return ToolStatus(name=name, installed=False)
     version = _get_tool_version(name)
+    if not version:
+        return ToolStatus(name=name, installed=False, path=path)
     return ToolStatus(name=name, installed=True, version=version, path=path)
 
 

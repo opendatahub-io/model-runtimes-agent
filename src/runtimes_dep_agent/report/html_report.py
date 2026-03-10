@@ -86,11 +86,25 @@ def _load_text(path: Path) -> str:
 
 
 def _extract_verdict(deployment_text: str) -> str:
-    upper = deployment_text.upper()
-    if "NO-GO" in upper or "NO GO" in upper:
-        return "NO-GO"
-    if "GO" in upper:
-        return "GO"
+    """Extract verdict from explicit 'Verdict:' or 'Deployment Decision:' markers only."""
+    if not deployment_text or not deployment_text.strip():
+        return "UNKNOWN"
+    text_lower = deployment_text.lower()
+    for marker in ("verdict:", "deployment decision:"):
+        idx = text_lower.find(marker)
+        if idx == -1:
+            continue
+        rest = deployment_text[idx + len(marker) :].split("\n")[0].strip()
+        tokens = rest.upper().split()
+        if not tokens:
+            continue
+        first = tokens[0]
+        if first == "GO":
+            return "GO"
+        if first == "NO-GO":
+            return "NO-GO"
+        if first == "NO" and len(tokens) >= 2 and tokens[1] == "GO":
+            return "NO-GO"
     return "UNKNOWN"
 
 

@@ -562,9 +562,11 @@ with st.sidebar:
         help="Paste the full oc login command from the OpenShift console (optional). The agent will execute it before running."
     )
 
-    if oc_login_input:
-        st.session_state.oc_login_command = oc_login_input
+    if oc_login_input and oc_login_input.strip():
+        st.session_state.oc_login_command = oc_login_input.strip()
         st.markdown('<span style="background-color: #d4edda; color: #155724; padding: 4px 8px; border-radius: 4px; font-size: 0.85em;">Configured</span>', unsafe_allow_html=True)
+    else:
+        st.session_state.oc_login_command = None
 
     st.divider()
     
@@ -622,6 +624,7 @@ with st.sidebar:
         st.session_state.yaml_content_raw = None
         st.session_state.config_path = None
         st.session_state.preflight_results = None
+        st.session_state.oc_login_command = None
         st.session_state.agent_timestamps = {
             "supervisor": None,
             "configuration": None,
@@ -1046,23 +1049,28 @@ else:
         
         st.markdown('<div style="margin-top: 20px;"><span style="background-color: #28a745; color: white; padding: 8px 16px; border-radius: 4px; font-size: 0.95em; font-weight: 500;">Deployment completed successfully</span></div>', unsafe_allow_html=True)
 
-        # Generate and offer HTML report download
+        # Generate and offer HTML report download (unique temp file per run to avoid cross-session races)
         try:
             repo_root = detect_repo_root([Path(__file__).resolve()])
-            report_tmp = Path(tempfile.gettempdir()) / "agent_report.html"
-            generate_html_report(
-                info_dir=Path(repo_root, "info"),
-                output_path=report_tmp,
-                agent_output=st.session_state.agent_output_text,
-                preflight_results=st.session_state.preflight_results,
-            )
-            report_html = report_tmp.read_text(encoding="utf-8")
-            st.download_button(
-                label="Download HTML Report",
-                data=report_html,
-                file_name="report.html",
-                mime="text/html",
-            )
+            fd, report_tmp_path = tempfile.mkstemp(suffix=".html", prefix="agent_report_")
+            os.close(fd)
+            report_tmp = Path(report_tmp_path)
+            try:
+                generate_html_report(
+                    info_dir=Path(repo_root, "info"),
+                    output_path=report_tmp,
+                    agent_output=st.session_state.agent_output_text,
+                    preflight_results=st.session_state.preflight_results,
+                )
+                report_html = report_tmp.read_text(encoding="utf-8")
+                st.download_button(
+                    label="Download HTML Report",
+                    data=report_html,
+                    file_name="report.html",
+                    mime="text/html",
+                )
+            finally:
+                report_tmp.unlink(missing_ok=True)
         except Exception as report_exc:
             st.warning(f"Could not generate report: {report_exc}")
         

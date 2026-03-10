@@ -35,8 +35,9 @@ class LLMAgent:
                  api_key: str, 
                  model: str = "gemini-2.5-pro",
                  bootstrap_config: str | None = None,
+                 info_dir: Path | None = None,
                  ) -> None:
-    
+        self.info_dir = info_dir
         self.llm = ChatGoogleGenerativeAI(
             model=model,
             api_key=api_key,
@@ -85,25 +86,32 @@ class LLMAgent:
     # Internal helpers
     # ------------------------------------------------------------------ #
     def _initialise_specialists(self) -> List[SpecialistSpec]:
-        builders = [
-            build_config_specialist,
-            build_accelerator_specialist,
-            build_decision_specialist,
-            build_qa_specialist,
-        ]
-        return [
-            builder(
-                self.llm,
-                self._extract_final_text,
-                self.precomputed_requirements,
-            ) if builder is not build_config_specialist else
-            builder(
-                self.llm,
-                self._extract_final_text,
-                self.precomputed_requirements,
-                bootstrap_config_path=self.bootstrap_config_path,
-            ) for builder in builders
-        ]
+        specialists: List[SpecialistSpec] = []
+        specialists.append(build_config_specialist(
+            self.llm,
+            self._extract_final_text,
+            self.precomputed_requirements,
+            bootstrap_config_path=self.bootstrap_config_path,
+            info_dir=self.info_dir,
+        ))
+        specialists.append(build_accelerator_specialist(
+            self.llm,
+            self._extract_final_text,
+            self.precomputed_requirements,
+            info_dir=self.info_dir,
+        ))
+        specialists.append(build_decision_specialist(
+            self.llm,
+            self._extract_final_text,
+            self.precomputed_requirements,
+            info_dir=self.info_dir,
+        ))
+        specialists.append(build_qa_specialist(
+            self.llm,
+            self._extract_final_text,
+            self.precomputed_requirements,
+        ))
+        return specialists
 
     def _create_supervisor(self):
         tools = [spec.tool for spec in self.specialists]
@@ -198,12 +206,14 @@ class LLMAgent:
         if not self.precomputed_requirements:
             return
         
-        start_paths: list[Path] = [Path(__file__).resolve()]
-        if self.bootstrap_config_path:
-            start_paths.append(self.bootstrap_config_path)
-        repo_root = detect_repo_root(start_paths)
-
-        info_dir = repo_root / "info"
+        if self.info_dir is not None:
+            info_dir = self.info_dir
+        else:
+            start_paths: list[Path] = [Path(__file__).resolve()]
+            if self.bootstrap_config_path:
+                start_paths.append(self.bootstrap_config_path)
+            repo_root = detect_repo_root(start_paths)
+            info_dir = repo_root / "info"
         info_dir.mkdir(parents=True, exist_ok=True)
         
         models_info_path = info_dir / "models_info.json"
