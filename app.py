@@ -1,6 +1,8 @@
 import streamlit as st
 import yaml
 import os
+import shlex
+import tempfile
 import time
 import subprocess
 import re
@@ -13,6 +15,8 @@ from pathlib import Path
 import selectors
 
 from runtimes_dep_agent.utils.path_utils import detect_repo_root
+from runtimes_dep_agent.preflight import run_preflight_checks, preflight_ok
+from runtimes_dep_agent.report.html_report import generate_html_report
 
 # Page configuration
 st.set_page_config(
@@ -60,6 +64,10 @@ if "vllm_runtime_image" not in st.session_state:
     st.session_state.vllm_runtime_image = vllm_image_env if vllm_image_env else None
 if "runtime_backend" not in st.session_state:
     st.session_state.runtime_backend = None
+if "oc_login_command" not in st.session_state:
+    st.session_state.oc_login_command = None
+if "preflight_results" not in st.session_state:
+    st.session_state.preflight_results = None
 
 # Helper function to get value from extracted data with fallback
 def get_value(path: str, default):
@@ -543,6 +551,22 @@ with st.sidebar:
         st.session_state.runtime_backend = None
     
     st.divider()
+
+    # oc login command (optional)
+    st.subheader("oc login Command")
+    oc_login_input = st.text_input(
+        "Paste your oc login command",
+        type="password",
+        value=st.session_state.oc_login_command or "",
+        placeholder="oc login --token=sha256~... --server=https://...",
+        help="Paste the full oc login command from the OpenShift console (optional). The agent will execute it before running."
+    )
+
+    if oc_login_input:
+        st.session_state.oc_login_command = oc_login_input
+        st.markdown('<span style="background-color: #d4edda; color: #155724; padding: 4px 8px; border-radius: 4px; font-size: 0.85em;">Configured</span>', unsafe_allow_html=True)
+
+    st.divider()
     
     # YAML file upload (mandatory)
     st.subheader("Upload Modelcar Images YAML File *")
@@ -597,6 +621,7 @@ with st.sidebar:
         st.session_state.agent_start_time = None
         st.session_state.yaml_content_raw = None
         st.session_state.config_path = None
+        st.session_state.preflight_results = None
         st.session_state.agent_timestamps = {
             "supervisor": None,
             "configuration": None,
@@ -648,8 +673,6 @@ if not st.session_state.agent_started:
                         os.environ["OCI_REGISTRY_PULL_SECRET"] = st.session_state.oci_pull_secret
                     
                     # Save uploaded YAML to a file (YAML upload is mandatory)
-                    # Use original YAML content to preserve exact format
-                    import tempfile
                     temp_dir = tempfile.gettempdir()
                     config_path = os.path.join(temp_dir, "modelcar_config.yaml")
                     with open(config_path, 'wb') as tmp_file:
@@ -670,6 +693,28 @@ if not st.session_state.agent_started:
                     st.error(f"Failed to initialize: {str(e)}")
                     st.exception(e)
     st.info("Click 'Start AI Agent' to begin running the Agent")
+
+    # Show pre-flight checks before agent starts
+    st.subheader("Pre-flight Checks")
+    if st.session_state.preflight_results is None:
+        with st.spinner("Checking dependencies..."):
+            results = run_preflight_checks(quiet=True)
+            st.session_state.preflight_results = [
+                {"name": r.name, "installed": r.installed, "version": r.version, "path": r.path}
+                for r in results
+            ]
+    for r in st.session_state.preflight_results:
+        if r["installed"]:
+            ver = f" ({r['version']})" if r["version"] else ""
+            st.markdown(
+                f'<span style="background-color: #28a745; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.85em; margin-right: 8px;">{r["name"]} &#10003;{ver}</span>',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                f'<span style="background-color: #dc3545; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.85em; margin-right: 8px;">{r["name"]} &#10007; NOT FOUND</span>',
+                unsafe_allow_html=True,
+            )
 else:
     # Status checks
     st.subheader("Status Checks")
@@ -1000,6 +1045,26 @@ else:
             st.metric("Time Taken", f"{elapsed_time:.2f} seconds")
         
         st.markdown('<div style="margin-top: 20px;"><span style="background-color: #28a745; color: white; padding: 8px 16px; border-radius: 4px; font-size: 0.95em; font-weight: 500;">Deployment completed successfully</span></div>', unsafe_allow_html=True)
+
+        # Generate and offer HTML report download
+        try:
+            repo_root = detect_repo_root([Path(__file__).resolve()])
+            report_tmp = Path(tempfile.gettempdir()) / "agent_report.html"
+            generate_html_report(
+                info_dir=Path(repo_root, "info"),
+                output_path=report_tmp,
+                agent_output=st.session_state.agent_output_text,
+                preflight_results=st.session_state.preflight_results,
+            )
+            report_html = report_tmp.read_text(encoding="utf-8")
+            st.download_button(
+                label="Download HTML Report",
+                data=report_html,
+                file_name="report.html",
+                mime="text/html",
+            )
+        except Exception as report_exc:
+            st.warning(f"Could not generate report: {report_exc}")
         
         # Interactive Graphs
         st.markdown("---")
@@ -1166,14 +1231,12 @@ else:
                         if os.path.exists(venv_agent):
                             cmd = [venv_agent, "--config", config_path]
                         else:
-                            # Try to find agent in PATH
-                            import shutil
-                            agent_path = shutil.which("agent")
+                            import shutil as _shutil
+                            agent_path = _shutil.which("agent")
                             if agent_path:
                                 cmd = [agent_path, "--config", config_path]
                             else:
-                                # Fallback: use Python module directly
-                                python_cmd = shutil.which("python3") or shutil.which("python")
+                                python_cmd = _shutil.which("python3") or _shutil.which("python")
                                 if python_cmd:
                                     cmd = [python_cmd, "-m", "runtimes_dep_agent.execute_agent", "--config", config_path]
                                 else:
@@ -1184,6 +1247,11 @@ else:
                         venv_bin = os.path.join(project_dir, ".venv", "bin")
                         if os.path.exists(venv_bin):
                             env["PATH"] = f"{venv_bin}:{env.get('PATH', '')}"
+
+                        if st.session_state.oc_login_command:
+                            env["OC_LOGIN_COMMAND"] = st.session_state.oc_login_command
+                        if st.session_state.vllm_runtime_image:
+                            env["VLLM_RUNTIME_IMAGE"] = st.session_state.vllm_runtime_image
                         
                         if live_output_placeholder is None:
                             live_output_placeholder = st.empty()

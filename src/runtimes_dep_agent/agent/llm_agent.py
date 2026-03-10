@@ -67,6 +67,16 @@ class LLMAgent:
             config={"recursion_limit": recursion_limit},
         )
 
+    def stream_supervisor(
+        self, user_input: str, recursion_limit: int = 100
+    ):
+        """Yield streaming events from the supervisor for live output."""
+        return self._supervisor.stream(
+            {"messages": [{"role": "user", "content": user_input}]},
+            config={"recursion_limit": recursion_limit},
+            stream_mode="updates",
+        )
+
     def extract_final_text(self, result: Dict[str, Any]) -> str:
         """Extract the supervisor's final textual response."""
         return self._extract_final_text(result)

@@ -23,6 +23,9 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"runtimes_dep_agent.report" = ["*.png"]
+
 [project.scripts]
 agent = "runtimes_dep_agent.execute_agent:main"
 
