@@ -11,6 +11,7 @@ import os
 import subprocess
 import re
 import json
+from pathlib import Path
 
 
 def check_gpu_availability() -> tuple[bool, str]:
@@ -64,25 +65,32 @@ def check_gpu_availability() -> tuple[bool, str]:
         return False, "NONE"
 
 
-def get_gpu_info():
+def get_gpu_info(info_dir: Path | str | None = None):
     """
     Get detailed GPU information based on the GPU provider and save to gpu_info.txt file.
-    The file is saved in the info folder in the project root directory (overwrites existing file).
-    
+    When info_dir is provided, the file is written there; otherwise the info folder
+    in the project root is used (overwrites existing file).
+
+    Args:
+        info_dir: Optional per-run info directory; when None, uses project root / "info".
+
     Returns:
         str: Absolute path to the created gpu_info.txt file
     """
-    # Find project root (where config-yaml folder is located)
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    while current_dir != os.path.dirname(current_dir):
-        if os.path.exists(os.path.join(current_dir, "config-yaml")):
-            break
-        current_dir = os.path.dirname(current_dir)
-    
-    # Reference info folder in project root
-    info_dir = os.path.join(current_dir, "info")
-    os.makedirs(info_dir, exist_ok=True)
-    file_path = os.path.join(info_dir, "gpu_info.txt")
+    if info_dir is not None:
+        info_dir = Path(info_dir)
+        info_dir.mkdir(parents=True, exist_ok=True)
+        file_path = info_dir / "gpu_info.txt"
+    else:
+        # Find project root (where config-yaml folder is located)
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        while current_dir != os.path.dirname(current_dir):
+            if os.path.exists(os.path.join(current_dir, "config-yaml")):
+                break
+            current_dir = os.path.dirname(current_dir)
+        info_dir = os.path.join(current_dir, "info")
+        os.makedirs(info_dir, exist_ok=True)
+        file_path = os.path.join(info_dir, "gpu_info.txt")
     
     try:
         # Get GPU availability status

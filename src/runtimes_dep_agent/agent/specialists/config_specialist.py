@@ -22,6 +22,7 @@ def build_config_specialist(
     extract_text: Callable[[dict], str],
     precomputed_requirements: dict | None = None,
     bootstrap_config_path: str | None = None,
+    info_dir: Path | None = None,
 ) -> SpecialistSpec:
     """Return the configuration specialist agent and the supervisor-facing tool."""
 
@@ -99,7 +100,7 @@ def build_config_specialist(
         if not modelcar_path.exists():
             return "Error: model-car config not found."
 
-        deployment_matrix_path = Path(repo_root, "info", "deployment_matrix.json")
+        deployment_matrix_path = (info_dir / "deployment_matrix.json") if info_dir else Path(repo_root, "info", "deployment_matrix.json")
 
         # ------------------------------------------------------------------ #
         # 2. Load deployment matrix (deployable vs non-deployable)

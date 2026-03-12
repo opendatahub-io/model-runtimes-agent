@@ -1,6 +1,8 @@
 import streamlit as st
 import yaml
 import os
+import shlex
+import tempfile
 import time
 import subprocess
 import re
@@ -13,6 +15,8 @@ from pathlib import Path
 import selectors
 
 from runtimes_dep_agent.utils.path_utils import detect_repo_root
+from runtimes_dep_agent.preflight import run_preflight_checks, preflight_ok
+from runtimes_dep_agent.report.html_report import generate_html_report
 
 # Page configuration
 st.set_page_config(
@@ -60,6 +64,19 @@ if "vllm_runtime_image" not in st.session_state:
     st.session_state.vllm_runtime_image = vllm_image_env if vllm_image_env else None
 if "runtime_backend" not in st.session_state:
     st.session_state.runtime_backend = None
+if "oc_login_command" not in st.session_state:
+    st.session_state.oc_login_command = None
+if "preflight_results" not in st.session_state:
+    st.session_state.preflight_results = None
+if "run_info_dir" not in st.session_state:
+    st.session_state.run_info_dir = None
+
+# Helper: per-run info dir when agent was started from UI, else repo info/
+def _get_info_dir() -> Path:
+    run_dir = st.session_state.get("run_info_dir")
+    if run_dir:
+        return Path(run_dir)
+    return Path(detect_repo_root([Path(__file__).resolve()]), "info")
 
 # Helper function to get value from extracted data with fallback
 def get_value(path: str, default):
@@ -79,8 +96,7 @@ def get_value(path: str, default):
 # Function to load model information from info/models_info.json
 def load_model_info_from_json():
     """Load model information from the repo's info/models_info.json file."""
-    repo_root = detect_repo_root([Path(__file__).resolve()])
-    models_info_path = Path(repo_root, "info", "models_info.json")
+    models_info_path = _get_info_dir() / "models_info.json"
     models = []
     
     if not models_info_path.exists():
@@ -154,8 +170,7 @@ def load_model_info_from_json():
 
 def load_deployment_matrix():
     """Load deployment matrix entries from info/deployment_matrix.json."""
-    repo_root = detect_repo_root([Path(__file__).resolve()])
-    matrix_path = repo_root / "info" / "deployment_matrix.json"
+    matrix_path = _get_info_dir() / "deployment_matrix.json"
 
     if (
         st.session_state.agent_start_time is None
@@ -362,8 +377,7 @@ def extract_qa_summary(agent_output: str) -> tuple[str, str]:
 # Function to parse GPU info from gpu_info.txt
 def parse_gpu_info():
     """Parse GPU information from info/gpu_info.txt file and return per-node details."""
-    repo_root = detect_repo_root([Path(__file__).resolve()])
-    gpu_info_path = os.path.join(repo_root, "info", "gpu_info.txt")
+    gpu_info_path = str(_get_info_dir() / "gpu_info.txt")
     gpu_data = {
         "nodes": [],  # List of individual node details
         "total_gpus": 0,
@@ -543,6 +557,24 @@ with st.sidebar:
         st.session_state.runtime_backend = None
     
     st.divider()
+
+    # oc login command (optional)
+    st.subheader("oc login Command")
+    oc_login_input = st.text_input(
+        "Paste your oc login command",
+        type="password",
+        value=st.session_state.oc_login_command or "",
+        placeholder="oc login --token=sha256~... --server=https://...",
+        help="Paste the full oc login command from the OpenShift console (optional). The agent will execute it before running."
+    )
+
+    if oc_login_input and oc_login_input.strip():
+        st.session_state.oc_login_command = oc_login_input.strip()
+        st.markdown('<span style="background-color: #d4edda; color: #155724; padding: 4px 8px; border-radius: 4px; font-size: 0.85em;">Configured</span>', unsafe_allow_html=True)
+    else:
+        st.session_state.oc_login_command = None
+
+    st.divider()
     
     # YAML file upload (mandatory)
     st.subheader("Upload Modelcar Images YAML File *")
@@ -572,13 +604,12 @@ with st.sidebar:
     
     # Reset button
     if st.button("Reset", width='stretch'):
-        # Clear info folder files
-        repo_root = detect_repo_root([Path(__file__).resolve()])
-        info_dir = os.path.join(repo_root, "info")
+        # Clear info folder files (run-scoped or repo info/)
+        info_dir = _get_info_dir()
         files_to_clear = ["models_info.json", "gpu_info.txt", "deployment_info.txt", "deployment_matrix.json"]
         for filename in files_to_clear:
-            file_path = os.path.join(info_dir, filename)
-            if os.path.exists(file_path):
+            file_path = info_dir / filename
+            if file_path.exists():
                 try:
                     # Clear file content by writing empty string
                     with open(file_path, 'w') as f:
@@ -587,6 +618,7 @@ with st.sidebar:
                     st.error(f"Error clearing {filename}: {str(e)}")
         
         # Reset session state
+        st.session_state.run_info_dir = None
         st.session_state.agent_started = False
         st.session_state.workflow_completed = False
         st.session_state.workflow_step = 0
@@ -597,6 +629,8 @@ with st.sidebar:
         st.session_state.agent_start_time = None
         st.session_state.yaml_content_raw = None
         st.session_state.config_path = None
+        st.session_state.preflight_results = None
+        st.session_state.oc_login_command = None
         st.session_state.agent_timestamps = {
             "supervisor": None,
             "configuration": None,
@@ -648,8 +682,6 @@ if not st.session_state.agent_started:
                         os.environ["OCI_REGISTRY_PULL_SECRET"] = st.session_state.oci_pull_secret
                     
                     # Save uploaded YAML to a file (YAML upload is mandatory)
-                    # Use original YAML content to preserve exact format
-                    import tempfile
                     temp_dir = tempfile.gettempdir()
                     config_path = os.path.join(temp_dir, "modelcar_config.yaml")
                     with open(config_path, 'wb') as tmp_file:
@@ -670,6 +702,28 @@ if not st.session_state.agent_started:
                     st.error(f"Failed to initialize: {str(e)}")
                     st.exception(e)
     st.info("Click 'Start AI Agent' to begin running the Agent")
+
+    # Show pre-flight checks before agent starts
+    st.subheader("Pre-flight Checks")
+    if st.session_state.preflight_results is None:
+        with st.spinner("Checking dependencies..."):
+            results = run_preflight_checks(quiet=True)
+            st.session_state.preflight_results = [
+                {"name": r.name, "installed": r.installed, "version": r.version, "path": r.path}
+                for r in results
+            ]
+    for r in st.session_state.preflight_results:
+        if r["installed"]:
+            ver = f" ({r['version']})" if r["version"] else ""
+            st.markdown(
+                f'<span style="background-color: #28a745; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.85em; margin-right: 8px;">{r["name"]} &#10003;{ver}</span>',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                f'<span style="background-color: #dc3545; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.85em; margin-right: 8px;">{r["name"]} &#10007; NOT FOUND</span>',
+                unsafe_allow_html=True,
+            )
 else:
     # Status checks
     st.subheader("Status Checks")
@@ -843,8 +897,7 @@ else:
         st.subheader("Deployment Specialist Results")
         
         # Load deployment info from info/deployment_info.txt
-        repo_root = detect_repo_root([Path(__file__).resolve()])
-        deployment_info_path = os.path.join(repo_root, "info", "deployment_info.txt")
+        deployment_info_path = str(_get_info_dir() / "deployment_info.txt")
         
         # Check if file exists and has been updated since agent started
         file_exists_and_updated = False
@@ -1000,6 +1053,30 @@ else:
             st.metric("Time Taken", f"{elapsed_time:.2f} seconds")
         
         st.markdown('<div style="margin-top: 20px;"><span style="background-color: #28a745; color: white; padding: 8px 16px; border-radius: 4px; font-size: 0.95em; font-weight: 500;">Deployment completed successfully</span></div>', unsafe_allow_html=True)
+
+        # Generate and offer HTML report download (unique temp file per run to avoid cross-session races)
+        try:
+            fd, report_tmp_path = tempfile.mkstemp(suffix=".html", prefix="agent_report_")
+            os.close(fd)
+            report_tmp = Path(report_tmp_path)
+            try:
+                generate_html_report(
+                    info_dir=_get_info_dir(),
+                    output_path=report_tmp,
+                    agent_output=st.session_state.agent_output_text,
+                    preflight_results=st.session_state.preflight_results,
+                )
+                report_html = report_tmp.read_text(encoding="utf-8")
+                st.download_button(
+                    label="Download HTML Report",
+                    data=report_html,
+                    file_name="report.html",
+                    mime="text/html",
+                )
+            finally:
+                report_tmp.unlink(missing_ok=True)
+        except Exception as report_exc:
+            st.warning(f"Could not generate report: {report_exc}")
         
         # Interactive Graphs
         st.markdown("---")
@@ -1158,6 +1235,13 @@ else:
                         # Run the CLI command: agent --config <config_path>
                         config_path = st.session_state.config_path
                         
+                        # Per-run artifact dir so report and UI loaders use same path as agent
+                        if not st.session_state.get("run_info_dir"):
+                            run_dir = Path(tempfile.mkdtemp(prefix="agent_run_"))
+                            info_dir = run_dir / "info"
+                            info_dir.mkdir(parents=True, exist_ok=True)
+                            st.session_state.run_info_dir = str(info_dir)
+                        
                         # Find the agent command - try venv first, then system PATH
                         project_dir = os.path.dirname(os.path.abspath(__file__))
                         venv_agent = os.path.join(project_dir, ".venv", "bin", "agent")
@@ -1166,14 +1250,12 @@ else:
                         if os.path.exists(venv_agent):
                             cmd = [venv_agent, "--config", config_path]
                         else:
-                            # Try to find agent in PATH
-                            import shutil
-                            agent_path = shutil.which("agent")
+                            import shutil as _shutil
+                            agent_path = _shutil.which("agent")
                             if agent_path:
                                 cmd = [agent_path, "--config", config_path]
                             else:
-                                # Fallback: use Python module directly
-                                python_cmd = shutil.which("python3") or shutil.which("python")
+                                python_cmd = _shutil.which("python3") or _shutil.which("python")
                                 if python_cmd:
                                     cmd = [python_cmd, "-m", "runtimes_dep_agent.execute_agent", "--config", config_path]
                                 else:
@@ -1184,6 +1266,13 @@ else:
                         venv_bin = os.path.join(project_dir, ".venv", "bin")
                         if os.path.exists(venv_bin):
                             env["PATH"] = f"{venv_bin}:{env.get('PATH', '')}"
+
+                        if st.session_state.oc_login_command:
+                            env["OC_LOGIN_COMMAND"] = st.session_state.oc_login_command
+                        if st.session_state.vllm_runtime_image:
+                            env["VLLM_RUNTIME_IMAGE"] = st.session_state.vllm_runtime_image
+                        if st.session_state.get("run_info_dir"):
+                            env["AGENT_RUN_INFO_DIR"] = st.session_state.run_info_dir
                         
                         if live_output_placeholder is None:
                             live_output_placeholder = st.empty()

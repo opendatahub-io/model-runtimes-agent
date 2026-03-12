@@ -58,8 +58,10 @@ def build_decision_specialist(
     llm: BaseChatModel,
     extract_text: Callable[[dict], str],
     precomputed_requirements: dict | None = None,
+    info_dir: Path | None = None,
 ) -> SpecialistSpec:
     """Create the decision specialist that determines deployment feasibility."""
+    effective_info_dir = info_dir if info_dir is not None else INFO_DIR
 
     @tool
     def describe_preloaded_requirements() -> str:
@@ -72,7 +74,7 @@ def build_decision_specialist(
         if not precomputed_requirements:
             return "Deployment Fit Analysis:\n- No preloaded model requirements available."
 
-        gpu_file = Path(file_path) if file_path else GPU_INFO_DEFAULT
+        gpu_file = Path(file_path) if file_path else (effective_info_dir / "gpu_info.txt")
         if not gpu_file.exists():
             return f"Deployment Fit Analysis:\n- GPU info file not found at {gpu_file}."
 
@@ -137,7 +139,7 @@ def build_decision_specialist(
             "reason": "..."
           }
       """
-        json_path = Path(INFO_DIR, "deployment_matrix.json")
+        json_path = effective_info_dir / "deployment_matrix.json"
 
         try:
             matrix_obj = json.loads(deployment_matrix_json)
@@ -363,9 +365,9 @@ def build_decision_specialist(
         output_text = extract_text(result)
         
         # Save deployment decision output to info/deployment_info.txt
-        deployment_info_path = INFO_DIR / "deployment_info.txt"
+        deployment_info_path = effective_info_dir / "deployment_info.txt"
         try:
-            INFO_DIR.mkdir(parents=True, exist_ok=True)
+            effective_info_dir.mkdir(parents=True, exist_ok=True)
             with open(deployment_info_path, 'w', encoding='utf-8') as f:
                 f.write(output_text)
         except Exception as e:
