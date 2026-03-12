@@ -135,9 +135,10 @@ def build_qa_specialist(
             print(f"[QA] {msg}", flush=True)
             return msg
 
-        registry_from_modelcar = _infer_registry_from_modelcar(modelcar_cfg or {})
+        registry_host_override = os.environ.get("REGISTRY_HOST", "").strip()
+        registry_from_modelcar = registry_host_override or _infer_registry_from_modelcar(modelcar_cfg or {})
         if not registry_from_modelcar:
-            msg = "QA_ERROR:MODELCAR_REGISTRY_UNDETERMINED Could not determine a single registry host from model-car config."
+            msg = "QA_ERROR:MODELCAR_REGISTRY_UNDETERMINED Could not determine a single registry host from model-car config. Set REGISTRY_HOST to override."
             logger.error(msg)
             print(f"[QA] {msg}", flush=True)
             return msg
