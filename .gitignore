@@ -54,7 +54,6 @@ cover/
 *.pot
 
 # Django stuff:
-*.log
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
@@ -88,6 +87,9 @@ Pipfile.lock
 
 # poetry
 poetry.lock
+
+#uv
+uv.lock
 
 # pdm
 .pdm.toml

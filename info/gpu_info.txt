@@ -7,3 +7,4 @@
 • Node RAM: 1203.6 GB
 • Node Storage: 288.2 GB
 • Node Name: ip-10-0-61-165.ec2.internal
+

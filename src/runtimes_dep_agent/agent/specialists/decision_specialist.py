@@ -226,58 +226,91 @@ def build_decision_specialist(
         You MUST reason about the arguments, not just VRAM.
 
         ----------------------------------------------------------------------
-        Quantization vs accelerator compatibility (from vLLM docs)
+        REQUIRED deployment verdict format (machine-parseable; do not skip)
         ----------------------------------------------------------------------
-        When the supervisor includes accelerator information (e.g. NVIDIA A100,
-        NVIDIA H100, AMD GPU, Intel GPU, x86 CPU) and you can infer or see a
-        quantization type from the model metadata or name (e.g. "w4a16",
-        "w8a8", "fp8", "AWQ", "GPTQ", "GGUF", "bitsandbytes"), you MUST
-        cross-check it against the following compatibility matrix:
+        Your final answer MUST include a section whose heading is exactly this line:
+
+        ### Deployment Decision
+
+        The line IMMEDIATELY after that heading MUST be exactly ONE of these four lines
+        (nothing else on that line: no bullets, no extra words, no narrative):
+
+        - Verdict: GO
+        - Verdict: NO-GO
+        - Deployment Decision: GO
+        - Deployment Decision: NO-GO
+
+        Put all explanations, bullet lists, deployability narrative, and
+        OPTIMIZED_SERVING_ARGUMENTS_JSON AFTER that single verdict line (separate
+        with a blank line if you like). Downstream tools parse deployment_info.txt
+        using this pattern; a missing or vague first line breaks the UI and reports.
+
+        Valid minimal example (GO):
+
+        ### Deployment Decision
+        Verdict: GO
+
+        Per-model notes and reasoning follow below.
+
+        Valid minimal example (NO-GO):
+
+        ### Deployment Decision
+        Verdict: NO-GO
+
+        Per-model notes and reasoning follow below.
+
+        ----------------------------------------------------------------------
+        Quantization vs accelerator compatibility (aligned with vLLM docs)
+        ----------------------------------------------------------------------
+        Canonical reference: vLLM "Supported Hardware" under Quantization
+        (https://docs.vllm.ai/en/latest/features/quantization/#supported-hardware).
+        When the supervisor includes accelerator information (NVIDIA by generation,
+        AMD GPU / ROCm, Intel GPU, x86 CPU) and you can infer a quantization
+        implementation from the model metadata or name, you MUST cross-check it
+        against the matrix below (same content as that page as of integration).
+
+        NVIDIA generations: Volta (e.g. V100), Turing (e.g. T4), Ampere (e.g. A100),
+        Ada (e.g. L4, L40), Hopper (e.g. H100). Use the AMD GPU column for AMD
+        accelerators (not the NVIDIA columns).
 
         Implementations:
 
         - AWQ:
           - Supported on: Turing, Ampere, Ada, Hopper, Intel GPU, x86 CPU
-          - Not supported on: Volta, AMD GPU, AWS Inferentia, Google TPU
+          - Not supported on: Volta, AMD GPU
 
         - GPTQ:
           - Supported on: Volta, Turing, Ampere, Ada, Hopper, Intel GPU, x86 CPU
-          - Not supported on: AMD GPU, AWS Inferentia, Google TPU
+          - Not supported on: AMD GPU
 
-        - Marlin (GPTQ/AWQ/FP8):
-          - Supported on: Ampere, Ada, Hopper
-          - Not supported on: Volta, Turing, AMD GPU, Intel GPU, x86 CPU,
-            AWS Inferentia, Google TPU
+        - Marlin (GPTQ/AWQ/FP8/FP4):
+          - Supported on: Turing (see caveat below), Ampere, Ada, Hopper
+          - Not supported on: Volta, AMD GPU, Intel GPU, x86 CPU
+          - Caveat: Turing does not support Marlin MXFP4.
 
         - INT8 (W8A8):
           - Supported on: Turing, Ampere, Ada, Hopper, x86 CPU
-          - Not supported on: Volta, AMD GPU, Intel GPU, AWS Inferentia,
-            Google TPU
+          - Not supported on: Volta, AMD GPU, Intel GPU
 
         - FP8 (W8A8):
           - Supported on: Ada, Hopper, AMD GPU
-          - Not supported on: Volta, Turing, Ampere, Intel GPU, x86 CPU,
-            AWS Inferentia, Google TPU
-
-        - AQLM:
-          - Supported on: Volta, Turing, Ampere, Ada, Hopper
-          - Not supported on: AMD GPU, Intel GPU, x86 CPU, AWS Inferentia,
-            Google TPU
+          - Not supported on: Volta, Turing, Ampere, Intel GPU, x86 CPU
 
         - bitsandbytes:
           - Supported on: Volta, Turing, Ampere, Ada, Hopper
-          - Not supported on: AMD GPU, Intel GPU, x86 CPU, AWS Inferentia,
-            Google TPU
+          - Not supported on: AMD GPU, Intel GPU, x86 CPU
 
         - DeepSpeedFP:
           - Supported on: Volta, Turing, Ampere, Ada, Hopper
-          - Not supported on: AMD GPU, Intel GPU, x86 CPU, AWS Inferentia,
-            Google TPU
+          - Not supported on: AMD GPU, Intel GPU, x86 CPU
 
         - GGUF:
-          - Supported on: Volta, Turing, Ampere, Ada, Hopper
-          - Not supported on: AMD GPU, Intel GPU, x86 CPU, AWS Inferentia,
-            Google TPU
+          - Supported on: Volta, Turing, Ampere, Ada, Hopper, AMD GPU
+          - Not supported on: Intel GPU, x86 CPU
+
+        - Other methods (e.g. AQLM) not listed above:
+          - Do not assume incompatibility; check the current vLLM Quantization docs
+            if the model uses a less common scheme.
 
         Mapping hints:
         - You may infer quantization implementation from model naming or metadata:
@@ -292,6 +325,7 @@ def build_decision_specialist(
           - L4, L40, some RTX 40xx → Ada
           - V100 → Volta
           - T4 → Turing
+          - AMD Instinct / Radeon data-center GPUs → use AMD GPU column
 
         How to use this matrix:
         - If a model’s quantization implementation is NOT supported on the
