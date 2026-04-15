@@ -31,7 +31,7 @@
   },
   "modelcar-ministral-3-14b-instruct-2512": {
     "model_name": "modelcar-ministral-3-14b-instruct-2512",
-    "image": "oci://registry.stage.redhat.io/rhai/modelcar-ministral-3-14b-instruct-2512:3.0",
+    "image": "oci://registry.stage.redhat.io/rhai/modelcar-ministral-3-14b-instruct-2512:3.0"
   },
   "modelcar-granite-4-0-h-small": {
     "model_name": "modelcar-granite-4-0-h-small",

@@ -153,6 +153,16 @@ code, code.inline { background: #eef1f5; padding: 2px 6px; border-radius: 4px; f
 .rendered-md h3.md-h2 { font-size: 1.05rem; margin: 18px 0 6px; color: var(--sidebar-bg); }
 .rendered-md h4.md-h3 { font-size: 0.95rem; margin: 14px 0 6px; color: var(--accent); }
 .rendered-md p { margin: 6px 0; }
+.rendered-md p.machine-verdict {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.88rem;
+  margin: 0 0 14px 0;
+  padding: 10px 14px;
+  background: #eef2f6;
+  border-left: 4px solid var(--accent);
+  border-radius: 4px;
+  color: var(--text);
+}
 .rendered-md ul.md-list { margin: 6px 0 6px 20px; }
 .rendered-md ul.md-list li { margin-bottom: 4px; }
 .rendered-md .code-block {
@@ -281,10 +291,10 @@ details summary {
     </section>
 
     <section id="deployment">
-      <h2>Deployment Decision <span class="badge badge-unknown">UNKNOWN</span></h2>
+      <h2>Deployment Decision <span class="badge badge-go">GO</span></h2>
       <div class="matrix-grid"><div class="matrix-col"><h4>Deployable</h4><div class="matrix-item pass">&#10003; <strong>granite-3.1-8b-instruct</strong><br><small>Model requires 18 GB VRAM and fits on a single GPU with 44.99 GB capacity. Serving arguments were missing and have been generated with safe defaults.</small></div><div class="matrix-item pass">&#10003; <strong>qwen3</strong><br><small>Model is assumed to be deployable. Its &#x27;nvfp4&#x27; quantization should allow it to fit on a single GPU. Serving arguments were missing and have been generated with safe defaults. NOTE: &#x27;nvfp4&#x27; (Marlin FP4) requires a Turing generation or newer NVIDIA GPU.</small></div></div><div class="matrix-col"><h4>Non-deployable</h4><p class="muted">None</p></div></div>
       
-        <div class="rendered-md" style="margin-top:16px"><p>Here is the deployment decision report.</p>
+        <div class="rendered-md" style="margin-top:16px"><p class="machine-verdict"><strong>Verdict: GO</strong></p><p>Here is the deployment decision report.</p>
 
 <h4 class="md-h3">Deployment Decision Report</h4>
 

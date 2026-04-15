@@ -141,6 +141,3 @@ If the quantization method is **not** in the table, check the full [Quantization
 
 ---
 
-## Optional: Cursor always-on rule
-
-To remind the agent of this file in every session, add a short rule under `.cursor/rules/` with `alwaysApply: true` pointing contributors to this document for deployment work. (Optional; not required for the app to run.)

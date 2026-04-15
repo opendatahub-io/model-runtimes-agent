@@ -1,6 +1,7 @@
 import streamlit as st
 import yaml
 import os
+import html
 import shlex
 import tempfile
 import time
@@ -558,17 +559,59 @@ def load_deployment_matrix():
         for entry in data:
             if not isinstance(entry, dict):
                 continue
-            normalized.append(
-                {
-                    "model_name": entry.get("model_name", "Unknown"),
-                    "deployable": bool(entry.get("deployable", False)),
-                    "reason": entry.get("reason", "No reason provided"),
-                }
-            )
+            row = {
+                "model_name": entry.get("model_name", "Unknown"),
+                "deployable": bool(entry.get("deployable", False)),
+                "reason": entry.get("reason", "No reason provided"),
+            }
+            if "post_remediation_ready" in entry:
+                row["post_remediation_ready"] = bool(entry.get("post_remediation_ready"))
+            normalized.append(row)
         return normalized
     except Exception as exc:
         st.error(f"Error loading deployment matrix: {exc}")
         return []
+
+
+def _raw_models_info_map() -> dict:
+    """Load precomputed models_info.json as a dict keyed by model name."""
+    path = _get_info_dir() / "models_info.json"
+    try:
+        if not path.exists() or path.stat().st_size == 0:
+            return {}
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _model_has_persisted_serving_args(model_name: str) -> bool:
+    """
+    True if models_info lists non-empty serving args (from model-car serving_arguments.args).
+    Empty or missing arguments means configuration is not ready for deployment.
+    """
+    m = _raw_models_info_map().get(model_name)
+    if not isinstance(m, dict):
+        return False
+    args = m.get("arguments")
+    if not isinstance(args, list):
+        return False
+    return len(args) > 0
+
+
+def matrix_entry_fully_deployable(entry: dict) -> bool:
+    """
+    Stable rubric: matrix deployable flag, optional post_remediation_ready, and
+    non-empty persisted serving arguments in models_info.json must all agree.
+    """
+    if not entry.get("deployable", False):
+        return False
+    if entry.get("post_remediation_ready") is False:
+        return False
+    mn = entry.get("model_name") or ""
+    if mn and not _model_has_persisted_serving_args(mn):
+        return False
+    return True
 
 
 _ANSI_RE = re.compile(r'\x1b\[[0-9;]*m')
@@ -765,10 +808,38 @@ def extract_qa_summary(agent_output: str) -> tuple[str, str]:
     return status, qa_summary
 
 
+def _normalize_for_verdict_scan(text: str) -> str:
+    """Strip common markdown so **Verdict:** GO / NO-GO still match."""
+    return re.sub(r"[*_`]", "", text or "")
+
+
+def _deployment_output_has_nogo(agent_output: str) -> bool:
+    """True if supervisor output contains an explicit NO-GO deployment verdict (case-insensitive)."""
+    s = _normalize_for_verdict_scan(agent_output).lower()
+    patterns = (
+        r"deployment\s+decision\s*:\s*no-?\s*go\b",
+        r"verdict\s*:\s*no-?\s*go\b",
+        r"deployment\s*:\s*no-?\s*go\b",
+    )
+    return any(re.search(p, s) for p in patterns)
+
+
+def _deployment_output_has_explicit_go(agent_output: str) -> bool:
+    """True if supervisor output contains an explicit GO deployment verdict (case-insensitive)."""
+    s = _normalize_for_verdict_scan(agent_output).lower()
+    patterns = (
+        r"deployment\s+decision\s*:\s*go\b",
+        r"verdict\s*:\s*go\b",
+        r"deployment\s*:\s*go\b",
+    )
+    return any(re.search(p, s) for p in patterns)
+
+
 def deployment_success_badge_ok(agent_output: str, qa_status: str) -> bool:
     """
-    Whether to show a successful deployment banner. Requires a clear QA pass
-    (not failed, not skipped — e.g. NO-GO or Podman issues count as non-success).
+    Whether to show a successful deployment banner. Requires explicit GO verdict
+    lines in the agent output, no explicit NO-GO, passing QA per qa_status, and
+    no Podman/runtime tool errors.
     """
     out = agent_output or ""
     out_u = out.upper()
@@ -778,6 +849,10 @@ def deployment_success_badge_ok(agent_output: str, qa_status: str) -> bool:
     if "RUNTIME_NOT_FOUND" in out_u and "PODMAN" in out_u:
         return False
     if qa_status in ("failed", "skipped", "pending"):
+        return False
+    if _deployment_output_has_nogo(out):
+        return False
+    if not _deployment_output_has_explicit_go(out):
         return False
     if qa_status == "passed":
         return True
@@ -1140,30 +1215,35 @@ if not st.session_state.agent_started:
             and r.get("installed")
             and r.get("running") is False
         )
+        name_esc = html.escape(str(r.get("name", "")), quote=False)
+        ver_raw = r.get("version") or ""
+        ver_esc = f" ({html.escape(str(ver_raw), quote=False)})" if ver_raw else ""
         if r["installed"] and not podman_down:
-            ver = f" ({r['version']})" if r["version"] else ""
             extra = ""
             if r.get("name") == "podman" and r.get("running") is True:
                 extra = " · engine OK"
             _preflight_badges += (
                 f'<span style="background-color: #00b894; color: white; padding: 5px 14px; border-radius: 20px; '
                 f'font-size: 0.82rem; font-weight:600; margin-right: 8px; display:inline-block;">'
-                f'{r["name"]} &#10003;{ver}{extra}</span>'
+                f'{name_esc} &#10003;{ver_esc}{extra}</span>'
             )
         elif podman_down:
-            ver = f" ({r['version']})" if r["version"] else ""
-            hint = r.get("running_detail") or "Start Podman (e.g. podman machine start on macOS)."
+            hint = html.escape(
+                r.get("running_detail")
+                or "Start Podman (e.g. podman machine start on macOS).",
+                quote=True,
+            )
             _preflight_badges += (
                 f'<span style="background-color: #e17055; color: white; padding: 5px 14px; border-radius: 20px; '
                 f'font-size: 0.82rem; font-weight:600; margin-right: 8px; display:inline-block;" '
                 f'title="{hint}">'
-                f'{r["name"]} &#10007; INSTALLED · ENGINE DOWN{ver}</span>'
+                f'{name_esc} &#10007; INSTALLED · ENGINE DOWN{ver_esc}</span>'
             )
         else:
             _preflight_badges += (
                 f'<span style="background-color: #d63031; color: white; padding: 5px 14px; border-radius: 20px; '
                 f'font-size: 0.82rem; font-weight:600; margin-right: 8px; display:inline-block;">'
-                f'{r["name"]} &#10007; NOT FOUND</span>'
+                f'{name_esc} &#10007; NOT FOUND</span>'
             )
     st.markdown(f'<div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">{_preflight_badges}</div>', unsafe_allow_html=True)
 
@@ -1450,8 +1530,8 @@ else:
     deployment_matrix_entries = load_deployment_matrix()
     if deployment_matrix_entries:
         st.subheader("Deployment Matrix")
-        deployable = [entry for entry in deployment_matrix_entries if entry["deployable"]]
-        blocked = [entry for entry in deployment_matrix_entries if not entry["deployable"]]
+        deployable = [entry for entry in deployment_matrix_entries if matrix_entry_fully_deployable(entry)]
+        blocked = [entry for entry in deployment_matrix_entries if not matrix_entry_fully_deployable(entry)]
 
         col_deployable, col_blocked = st.columns(2)
         with col_deployable:
@@ -1538,9 +1618,9 @@ else:
         elapsed_time = time.time() - st.session_state.start_time
         agent_out_summary = st.session_state.agent_output_text or ""
         qa_status_summary, _ = extract_qa_summary(agent_out_summary)
-        # Count only deployable models from deployment_matrix.json
+        # Count models that pass matrix + post_remediation + persisted serving args (models_info.json)
         deployment_matrix_entries = load_deployment_matrix()
-        deployable_models = [entry for entry in deployment_matrix_entries if entry.get("deployable", False)]
+        deployable_models = [entry for entry in deployment_matrix_entries if matrix_entry_fully_deployable(entry)]
         models_executed_summary = len(deployable_models) if deployable_models else 0
         
         col1, col2 = st.columns(2)

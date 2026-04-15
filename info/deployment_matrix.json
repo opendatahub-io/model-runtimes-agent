@@ -1,32 +1,38 @@
 [
   {
     "model_name": "modelcar-granite-4-0-h-small",
-    "deployable": true,
-    "reason": "Model fits on 2 GPUs. Serving arguments must be added."
+    "deployable": false,
+    "post_remediation_ready": false,
+    "reason": "VRAM fits cluster, but required serving arguments are not persisted in the model-car; not deployable until configuration is saved."
   },
   {
     "model_name": "modelcar-ministral-3-14b-instruct-2512",
-    "deployable": true,
-    "reason": "Model fits on 1 GPU. Serving arguments must be added."
+    "deployable": false,
+    "post_remediation_ready": false,
+    "reason": "VRAM fits cluster, but required serving arguments are not persisted in the model-car; not deployable until configuration is saved."
   },
   {
     "model_name": "modelcar-qwen3-next-80b-a3b-instruct-quantized-w4a16",
-    "deployable": true,
-    "reason": "Model fits on 2 GPUs with w4a16 quantization. Serving arguments must be added."
+    "deployable": false,
+    "post_remediation_ready": false,
+    "reason": "VRAM fits cluster with w4a16 quantization, but required serving arguments are not persisted in the model-car; not deployable until configuration is saved."
   },
   {
     "model_name": "modelcar-granite-4-0-h-small-fp8-dynamic",
     "deployable": false,
+    "post_remediation_ready": false,
     "reason": "Hardware Incompatibility: FP8 quantization requires NVIDIA Hopper or Ada generation GPUs."
   },
   {
     "model_name": "modelcar-qwen3-next-80b-a3b-instruct-fp8",
     "deployable": false,
+    "post_remediation_ready": false,
     "reason": "Hardware Incompatibility: FP8 quantization requires NVIDIA Hopper or Ada generation GPUs."
   },
   {
     "model_name": "modelcar-qwen3-vl-235b-a22b-instruct-nvfp4",
     "deployable": false,
+    "post_remediation_ready": false,
     "reason": "Hardware Incompatibility: FP4 quantization requires NVIDIA Hopper or Ada generation GPUs."
   }
 ]

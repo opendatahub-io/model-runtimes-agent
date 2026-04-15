@@ -226,6 +226,40 @@ def build_decision_specialist(
         You MUST reason about the arguments, not just VRAM.
 
         ----------------------------------------------------------------------
+        REQUIRED deployment verdict format (machine-parseable; do not skip)
+        ----------------------------------------------------------------------
+        Your final answer MUST include a section whose heading is exactly this line:
+
+        ### Deployment Decision
+
+        The line IMMEDIATELY after that heading MUST be exactly ONE of these four lines
+        (nothing else on that line: no bullets, no extra words, no narrative):
+
+        - Verdict: GO
+        - Verdict: NO-GO
+        - Deployment Decision: GO
+        - Deployment Decision: NO-GO
+
+        Put all explanations, bullet lists, deployability narrative, and
+        OPTIMIZED_SERVING_ARGUMENTS_JSON AFTER that single verdict line (separate
+        with a blank line if you like). Downstream tools parse deployment_info.txt
+        using this pattern; a missing or vague first line breaks the UI and reports.
+
+        Valid minimal example (GO):
+
+        ### Deployment Decision
+        Verdict: GO
+
+        Per-model notes and reasoning follow below.
+
+        Valid minimal example (NO-GO):
+
+        ### Deployment Decision
+        Verdict: NO-GO
+
+        Per-model notes and reasoning follow below.
+
+        ----------------------------------------------------------------------
         Quantization vs accelerator compatibility (aligned with vLLM docs)
         ----------------------------------------------------------------------
         Canonical reference: vLLM "Supported Hardware" under Quantization
