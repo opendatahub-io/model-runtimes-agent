@@ -5,7 +5,9 @@ from __future__ import annotations
 import base64
 import inspect
 import json
+import os
 import unittest
+import unittest.mock
 from pathlib import Path
 
 from runtimes_dep_agent.qa_kserve.heuristics import classify_pod_json, logs_hint_oom
@@ -367,6 +369,46 @@ class TestPipelineDefaults(unittest.TestCase):
         self.assertEqual(d, 2)
         # Loop uses range(max_heal_retries + 1) -> 3 attempts
         self.assertEqual(list(range(d + 1)), [0, 1, 2])
+
+
+class TestContainerLogResilience(unittest.TestCase):
+    def test_default_known_containers(self) -> None:
+        from runtimes_dep_agent.qa_kserve.pipeline import _known_containers
+        known = _known_containers()
+        self.assertIn("kserve-container", known)
+        self.assertIn("storage-initializer", known)
+
+    def test_default_skip_containers(self) -> None:
+        from runtimes_dep_agent.qa_kserve.pipeline import _skip_containers
+        skip = _skip_containers()
+        self.assertIn("pauser", skip)
+        self.assertIn("queue-proxy", skip)
+
+    @unittest.mock.patch.dict(os.environ, {"QA_KNOWN_CONTAINERS": "my-runtime,my-init"})
+    def test_env_override_known_containers(self) -> None:
+        from runtimes_dep_agent.qa_kserve.pipeline import _known_containers
+        known = _known_containers()
+        self.assertEqual(known, frozenset({"my-runtime", "my-init"}))
+        self.assertNotIn("kserve-container", known)
+
+    @unittest.mock.patch.dict(os.environ, {"QA_SKIP_CONTAINERS": "istio-proxy,envoy"})
+    def test_env_override_skip_containers(self) -> None:
+        from runtimes_dep_agent.qa_kserve.pipeline import _skip_containers
+        skip = _skip_containers()
+        self.assertEqual(skip, frozenset({"istio-proxy", "envoy"}))
+        self.assertNotIn("pauser", skip)
+
+    @unittest.mock.patch.dict(os.environ, {"QA_KNOWN_CONTAINERS": "  spaces , tabs\t"})
+    def test_strips_whitespace_in_known(self) -> None:
+        from runtimes_dep_agent.qa_kserve.pipeline import _known_containers
+        known = _known_containers()
+        self.assertEqual(known, frozenset({"spaces", "tabs"}))
+
+    @unittest.mock.patch.dict(os.environ, {"QA_KNOWN_CONTAINERS": ""})
+    def test_empty_env_uses_defaults(self) -> None:
+        from runtimes_dep_agent.qa_kserve.pipeline import _known_containers
+        known = _known_containers()
+        self.assertIn("kserve-container", known)
 
 
 if __name__ == "__main__":
